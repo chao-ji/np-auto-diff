@@ -166,7 +166,7 @@ for ii in xrange(50000):
 
     if ii % 1000 == 0:
         print "iteration %d: loss: %f" % (ii, ll.eval(feed_dict))
-
+    ll.parent_total = 1
     ll.deriv(feed_dict, 1.)
 
     W1 += -step_size * sess.derivs[id(w1)]
@@ -179,3 +179,5 @@ for ii in xrange(50000):
     sess.reset()
 
 
+s_val = s.eval(feed_dict)
+print "accuracy: %f" % np.mean(np.argmax(s_val, axis=1) == y)
