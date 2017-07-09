@@ -153,30 +153,30 @@ ll = AddOp(AddOp(H, r_w1, sess), AddOp(r_w2, r_w3, sess), sess)
 step_size = 1e-1
 for ii in xrange(50000):
 
-    feed_dict = {x: X,
-        w1: W1,
-        i1: np.ones((300, 1)),
-        bb1: b1,
-        w2: W2,
-        i2: np.ones((300, 1)),
-        bb2: b2,
-        w3: W3,
-        i3: np.ones((300, 1)),
-        bb3: b3}
+  feed_dict = {x: X,
+    w1: W1,
+    i1: np.ones((300, 1)),
+    bb1: b1,
+    w2: W2,
+    i2: np.ones((300, 1)),
+    bb2: b2,
+    w3: W3,
+    i3: np.ones((300, 1)),
+    bb3: b3}
 
-    if ii % 1000 == 0:
-        print "iteration %d: loss: %f" % (ii, ll.eval(feed_dict))
-    ll.parent_total = 1
-    ll.deriv(feed_dict, 1.)
+  if ii % 1000 == 0:
+    print "iteration %d: loss: %f" % (ii, ll.eval(feed_dict))
+  ll.parent_total = 1
+  ll.grad(feed_dict, 1.)
 
-    W1 += -step_size * sess.derivs[id(w1)]
-    b1 += -step_size * sess.derivs[id(bb1)]
-    W2 += -step_size * sess.derivs[id(w2)]
-    b2 += -step_size * sess.derivs[id(bb2)]
-    W3 += -step_size * sess.derivs[id(w3)]
-    b3 += -step_size * sess.derivs[id(bb3)]
+  W1 += -step_size * sess.grads[id(w1)]
+  b1 += -step_size * sess.grads[id(bb1)]
+  W2 += -step_size * sess.grads[id(w2)]
+  b2 += -step_size * sess.grads[id(bb2)]
+  W3 += -step_size * sess.grads[id(w3)]
+  b3 += -step_size * sess.grads[id(bb3)]
 
-    sess.reset()
+  sess.reset()
 
 
 s_val = s.eval(feed_dict)
