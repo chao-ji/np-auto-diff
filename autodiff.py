@@ -256,43 +256,7 @@ class Conv2dOp(_2dKernelOp):
 
       self.X.grad(feed_dict, d_X)
       self.W.grad(feed_dict, d_W)
-
-
-
-
-
-
-
-
-
-
-
-
-class MaxPool2dOp(_2dKernelOp):
-  def __init__(self, X, ksize, strides, padding, sess):
-    super(MaxPool2dOp, self).__init__(X, strides, ksize, padding, sess)
-    self.shape = X.shape[0], self._out_height, self._out_width, X.shape[3] 
-    self.ksize = ksize
-
-  def eval(self, feed_dict):
-    X_val = self._pad_X(feed_dict)
-
-    return X_val
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+      
 
 class SoftmaxCrossEntropyWithLogitsOp(_BaseOp):
   def __init__(self, logits, labels, sess):   
