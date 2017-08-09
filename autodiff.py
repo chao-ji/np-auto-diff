@@ -625,6 +625,7 @@ class Conv2dOp(_2dKernelOp):
 
 
 class MaxPool2dOp(_2dKernelOp):
+  def __init__(self, X, fsize, strides, padding, sess):
     """Op that performs 2D max pooling on a 4D tensor
 
     Computes output tensor of dimensions [batch, out_height, out_width, out_channels]
@@ -642,7 +643,6 @@ class MaxPool2dOp(_2dKernelOp):
       sess: `Session`;
         The session that the Op is associated with
     """
-  def __init__(self, X, fsize, strides, padding, sess):
     super(MaxPool2dOp, self).__init__(X, fsize, strides, padding, sess)
     self.shape = X.shape[0], self._out_height, self._out_width, X.shape[3]
 
