@@ -1,61 +1,40 @@
 import numpy as np
 
 class _BaseOp(object):
-  """Base class of all Op classes. An Op emits a tensor of a specific shape.
-
-    Initializes the following attributes of an Op:
+  """Base class of all Op classes. An Op emits a tensor of a specific shape. Initializes the 
+     following attributes of an Op:
 
     sess: `Session`;
+      The session in which the Op is defined
     shape: `numpy.ndarray`;
-      1D array, e.g. [2, 3, 3, 2], specifying shape of the emitted tensor
+      1D array, e.g. [2, 3, 3, 2], specifying the shape of the emitted tensor
     parent_total: integer;
-      Total number of Op's that take the current Op as argument, which is determined when
-      computational graph is defined initially 
+      Total number of Op's for wihch the current Op is an argument; this is determined when
+      the computational graph was defined in the beginning
     parent_acc: integer;
-      Initialized to zero, it keeps track of number of parent Op's that have backpropped
+      Initialized to zero; it keeps track of the number of parent Op's that have backpropped
       gradients to the current Op in an iteration
+    is_terminal: bool;
+      Initialized to False; indicates if the Op is terminal node (i.e. has no child node)
 
     Parameters
     ----------
     sess: `Session`;
-      The session that the Op is associated with
+      The session in which the Op is defined
   """  
   def __init__(self, sess):
     self.sess = sess
-    self.shape = None
+    self.shape = () 
     self.parent_total = 0
     self.parent_acc = 0
-    self.sess.vars.append(self)
-    
-
-  def grad(self, feed_dict, backprop):
-    """Update the gradient with respect to the current Op, and propagate gradient to child Op's.
-  
-    `_grad_func` is implemented by each Op to propagate gradient downstream to child Op's.
-
-    Graident backpropped from parent Op's are first accumulated, and then are propagated to child
-    Op's when `parent_acc` == `parent_total`.
-
-    Parameters
-    ----------
-    feed_dict: `dict`;
-      dict: {`Op`: `numpy.ndarray`}
-
-    backprop: `numpy.ndarray`;
-      Gradient backpropped from a parent Op. Has the same shape as `self.shape`
-    """
-    if id(self) not in self.sess.grads:
-      self.sess.grads[id(self)] = np.zeros(self.shape)
-    self.sess.grads[id(self)] += backprop
-    self.parent_acc += 1
-
-    if self.parent_acc == self.parent_total and hasattr(self, "_grad_func"):
-      self._grad_func(feed_dict)
+    self.is_terminal = False 
+    self.sess.variables.append(self)
+   
 
   def eval(self, feed_dict):
     """Evaluate the current Op.
 
-    `_eval_func` is implemented by each Op to compute the tensor value.
+    `_eval_func` is implemented by each Op separately to compute the tensor value.
 
     Parameters
     ----------
@@ -64,33 +43,67 @@ class _BaseOp(object):
 
     Returns
     -------
-    self.sess.vals[id(self)]: `numpy.ndarray`;
-      Value of the tensor
+    `numpy.ndarray`; value of the tensor
     """
-    if id(self) not in self.sess.vals:
-      self.sess.vals[id(self)] = self._eval_func(feed_dict)
-    return self.sess.vals[id(self)]
+    if id(self) not in self.sess.values:
+      self.sess.values[id(self)] = self._eval_func(feed_dict)
+    return self.sess.values[id(self)]
+ 
+
+  def grad(self, feed_dict, backprop):
+    """Update the gradient w.r.t. the current Op (`backprop`), and propagate gradient down to 
+    child Op's. `_grad_func` is implemented by each Op separately to propagate gradient down to 
+    child Op's. 
+
+    NOTE: `grad` is invoked when a parent Op propagates gradient (`backprop`) back to the current
+    Op. This gradient is accumulated and `parent_acc` is incremented, which maintains the number
+    of parent Op's that have already backpropped gradients. The computation of the gradient w.r.t.
+    the current Op is finished when `parent_acc` == `parent_total`, and this gradient is further 
+    propagated down to child Op's of the current Op by invoking `self._grad_func(feed_dict)`.
+
+    Parameters
+    ----------
+    feed_dict: `dict`;
+      dict: {id(`Op`): `numpy.ndarray`}
+
+    backprop: `numpy.ndarray`;
+      Gradient backpropped from a parent Op. Has the SAME shape as the shape of the current Op
+      (i.e. `self.shape`)
+    """
+    if self.is_terminal and not self.is_variable:
+      return
+
+    if id(self) not in self.sess.gradients:
+      self.sess.gradients[id(self)] = np.zeros(self.shape)
+    self.sess.gradients[id(self)] += backprop
+    self.parent_acc += 1
+
+    if self.parent_acc == self.parent_total and not self.is_terminal:
+        self._grad_func(feed_dict)
 
 
 class PlaceholderOp(_BaseOp):
-  """Op that holds place for input and parameters, which are the leaf nodes of the computational
-  graph
-
-  %Emits: X
+  """Creates placeholder for input or parameters.
+  NOTE: placeholders must be terminal nodes of the computational graph, so it does not implement
+  the `_grad_func()` method.
 
   Parameters
   ----------
   shape: `numpy.array`;
     1D array specifying shape of tensor
   sess: `Session`;
-    The session that the Op is associated with
+    The session in which the Op is defined
+  is_variable: bool;
+    Indicates if the placeholder holds trainable parameters or not
   """ 
-  def __init__(self, shape, sess):
+  def __init__(self, shape, sess, is_variable=True):
     super(PlaceholderOp, self).__init__(sess)
+    self.is_terminal = True
+    self.is_variable = is_variable
     self.shape = shape
 
   def _eval_func(self, feed_dict):
-    """Function that outputs the value of the tensor
+    """Function that outputs the value of the tensor.
 
     Parameters
     ----------
@@ -99,23 +112,20 @@ class PlaceholderOp(_BaseOp):
 
     Returns
     -------
-    feed_dict[self]: `numpy.ndarray`;
-      Value of the tensor
+    `numpy.ndarray`; value of the tensor
     """
     return feed_dict[self]
     
 
 class SigmoidOp(_BaseOp):
-  """Op that applies sigmoid function to the input `X` componentwise
-
-  %Emits: sigmoid(X)
+  """Op that applies sigmoid function componentwise to the input `X`.
 
   Parameters
   ----------
-  X: `numpy.ndarray`;
+  X: `_BaseOp`;
     The input tensor
   sess: `Session`;
-    The session that the Op is associated with
+    The session in which the Op is defined
   """
   def __init__(self, X, sess):
     super(SigmoidOp, self).__init__(sess)
@@ -124,7 +134,7 @@ class SigmoidOp(_BaseOp):
     self.X.parent_total += 1
 
   def _eval_func(self, feed_dict):
-    """Function that outputs the value of the tensor
+    """Function that outputs the value of the tensor.
 
     Parameters
     ----------
@@ -133,36 +143,35 @@ class SigmoidOp(_BaseOp):
 
     Returns
     -------
-    1. / (1. + np.exp(-self.X.eval(feed_dict))): `numpy.ndarray`
-      Value of tensor
+    `numpy.ndarray`; value of the tensor
     """
-    return 1. / (1. + np.exp(-self.X.eval(feed_dict)))
+    X_val = self.X.eval(feed_dict)
+    return 1. / (1. + np.exp(-X_val))
 
   def _grad_func(self, feed_dict):
-    """Propagate gradient downstream to child `X`
+    """Propagate gradient down to child `X`.
 
     Parameters
     ----------
     feed_dict: `dict`;
       dict: {id(`Op`): `numpy.ndarray`}
     """
-    sig = self.eval(feed_dict)
-    sig = sig * (1. - sig)
-    grad_val = self.sess.grads[id(self)]
-    self.X.grad(feed_dict, grad_val * sig)
+    val = self.eval(feed_dict)
+    val = val * (1. - val)
+    grad_val = self.sess.gradients[id(self)]
+    dX_val = grad_val * val
+    self.X.grad(feed_dict, dX_val)
 
 
 class ReluOp(_BaseOp):
-  """Op that applies ReLU to the input `X` componentwise
-
-  %Emits: ReLU(X)
+  """Op that appliesi Rectifier Linear Unit (i.e. ReLU) componentwise to the input `X`.
 
   Parameters
   ----------
-  X: `numpy.ndarray`;
+  X: `_BaseOp`;
     The input tensor 
   sess: `Session`;
-    The session that the Op is associated with
+    The session in which the Op is defined
   """
   def __init__(self, X, sess):
     super(ReluOp, self).__init__(sess)
@@ -171,7 +180,7 @@ class ReluOp(_BaseOp):
     self.X.parent_total += 1
 
   def _eval_func(self, feed_dict):
-    """Function that outputs the value of the tensor
+    """Function that outputs the value of the tensor.
 
     Parameters
     ----------
@@ -180,48 +189,48 @@ class ReluOp(_BaseOp):
 
     Returns
     -------
-    np.maximum(0, self.X.eval(feed_dict)): `numpy.ndarray`
-      Value of tensor
+    `numpy.ndarray`; value of the tensor
     """
-    return np.maximum(0, self.X.eval(feed_dict))
+    X_val = self.X.eval(feed_dict)
+    return np.maximum(0, X_val)
 
   def _grad_func(self, feed_dict):
-    """Propagate gradient downstream to `X`
+    """Propagate gradient down to child `X`.
 
     Parameters
     ----------
     feed_dict: `dict`;
       dict: {id(`Op`): `numpy.ndarray`}
     """
-    val = self.X.eval(feed_dict)
-    grad_val = self.sess.grads[id(self)]
-    grad_val[val <= 0] = 0
-    self.X.grad(feed_dict, grad_val)
+    X_val = self.X.eval(feed_dict)
+    grad_val = self.sess.gradients[id(self)]
+    grad_val[X_val <= 0] = 0
+    dX_val = grad_val
+    self.X.grad(feed_dict, dX_val)
 
 
 class ParamRegOp(_BaseOp):
-  """Op that computes the regularization term from input params `X`
-
-  %Emits: 0.5 * `reg` * `X.ravel().square().sum()`
-
+  """Op that computes the regularization term over the parameter tensor `W`. Specifically, it 
+  computes `0.5 * reg * sum(|W|^2)`.
+  
   Parameters
   ----------
-  X: `numpy.ndarray`;
-    The input parameters
+  W: `_BaseOp`;
+    The input tensor containing parameters
   reg: float;
-    Float between 0.0 and 1, controls strength of regularization
+    Float between 0.0 and 1.0, controls the strength of regularization
   sess: `Session`;
-    The session that the Op is associated with
+    The session in which the Op is defined
   """  
-  def __init__(self, X, reg, sess):
+  def __init__(self, W, reg, sess):
     super(ParamRegOp, self).__init__(sess)
     self.shape = 1, 1
-    self.X = X
+    self.W = W
     self.reg = reg
-    self.X.parent_total += 1
+    self.W.parent_total += 1
 
   def _eval_func(self, feed_dict):
-    """Function that outputs the value of the tensor
+    """Function that outputs the value of the tensor.
 
     Parameters
     ----------
@@ -230,38 +239,37 @@ class ParamRegOp(_BaseOp):
 
     Returns
     -------
-    .5 * self.reg * np.sum(val * val): `numpy.ndarray`
-      Value of tensor (scalar)
+    `numpy.ndarray`: value of tensor
     """
-    val = self.X.eval(feed_dict)
-    return .5 * self.reg * np.sum(val * val)
+    W_val = self.W.eval(feed_dict)
+    return .5 * self.reg * np.sum(W_val * W_val)
 
   def _grad_func(self, feed_dict):
-    """Propagate gradient downstream to `X`
+    """Propagate gradient down to `W`.
 
     Parameters
     ----------
     feed_dict: `dict`;
       dict: {id(`Op`): `numpy.ndarray`}
     """
-    val = self.X.eval(feed_dict)
-    grad_val = self.sess.grads[id(self)]
-    self.X.grad(feed_dict, grad_val * self.reg * val)
+    W_val = self.W.eval(feed_dict)
+    grad_val = self.sess.gradients[id(self)]
+    dW_val = self.reg * grad_val * W_val
+    self.W.grad(feed_dict, dW_val)
 
 
 class AddOp(_BaseOp):
-  """Op that computes the summation of two input tensors
-
-  %Emits: X1 + X2
-
+  """Op that computes the sum of two input tensors `X1` and `X2`.
+  NOTE: `X1` and `X2` must have the same shape.
+  
   Parameters
   ----------
-  X1: `numpy.ndarray`;
+  X1: `_BaseOp`;
     Input tensor
-  X2: `numpy.ndarray`;
+  X2: `_BaseOp`;
     Input tensor
   sess: `Session`;
-    The session that the Op is associated with
+    The session in which the Op is defined
   """
   def __init__(self, X1, X2, sess):
     super(AddOp, self).__init__(sess)
@@ -272,7 +280,7 @@ class AddOp(_BaseOp):
     self.X2.parent_total += 1
 
   def _eval_func(self, feed_dict):
-    """Function that outputs the value of the tensor
+    """Function that outputs the value of the tensor.
 
     Parameters
     ----------
@@ -281,37 +289,35 @@ class AddOp(_BaseOp):
 
     Returns
     -------
-    self.X1.eval(feed_dict) + self.X2.eval(feed_dict): `numpy.ndarray`
-      Value of tensor
+    `numpy.ndarray`: value of tensor
     """  
     return self.X1.eval(feed_dict) + self.X2.eval(feed_dict)
 
   def _grad_func(self, feed_dict):
-    """Propagate gradient downstream to `X1` and `X2`
+    """Propagate gradient down to `X1` and `X2`.
 
     Parameters
     ----------
     feed_dict: `dict`;
       dict: {id(`Op`): `numpy.ndarray`}
     """
-    grad_val = self.sess.grads[id(self)]
+    grad_val = self.sess.gradients[id(self)]
     self.X1.grad(feed_dict, grad_val)
     self.X2.grad(feed_dict, grad_val)
 
 
 class MatMulOp(_BaseOp):
-  """Op that computes the matrix multiplication
-
-  %Emits: np.dot(X1, X2)
+  """Op that computes the matrix multiplication of input tensors `X1` and `X2`.
+  NOTE: the shapes of `X1` and `X2` must be compatible.
 
   Parameters
   ----------
-  X1: `numpy.ndarray`;
+  X1: `_BaseOp`;
     Input 2D tensor, matrix
-  X2: `numpy.ndarray`;
+  X2: `_BaseOp`;
     Input 2D tensor, matrix
   sess: `Session`;
-    The session that the Op is associated with
+    The session in which the Op is defined
   """
   def __init__(self, X1, X2, sess):
     super(MatMulOp, self).__init__(sess)
@@ -322,7 +328,7 @@ class MatMulOp(_BaseOp):
     self.X2.parent_total += 1
 
   def _eval_func(self, feed_dict):
-    """Function that outputs the value of the tensor
+    """Function that outputs the value of the tensor.
 
     Parameters
     ----------
@@ -331,46 +337,51 @@ class MatMulOp(_BaseOp):
 
     Returns
     -------
-    np.dot(self.X1.eval(feed_dict), self.X2.eval(feed_dict)): `numpy.ndarray`
-      Value of tensor
-    """  
+    `numpy.ndarray`; value of tensor
+    """
     return np.dot(self.X1.eval(feed_dict), self.X2.eval(feed_dict))
 
   def _grad_func(self, feed_dict):
-    """Propagate gradient downstream to `X1` and `X2`
+    """Propagate gradient down to `X1` and `X2`.
 
     Parameters
     ----------
     feed_dict: `dict`;
       dict: {id(`Op`): `numpy.ndarray`}
     """
-    grad_val = self.sess.grads[id(self)]
+    grad_val = self.sess.gradients[id(self)]
     X1_val = self.X1.eval(feed_dict)
     X2_val = self.X2.eval(feed_dict)
-    self.X1.grad(feed_dict, np.dot(grad_val, X2_val.T))
-    self.X2.grad(feed_dict, np.dot(X1_val.T, grad_val))
+    dX1_val = np.dot(grad_val, X2_val.T)
+    dX2_val = np.dot(X1_val.T, grad_val)
+    self.X1.grad(feed_dict, dX1_val)
+    self.X2.grad(feed_dict, dX2_val)
 
 
 class _2dKernelOp(_BaseOp):
   """Base class of 2D filter Op's, i.e. `Conv2dOp` and `MaxPool2dOp`.
 
-  Provides methods for padding zeros (`_pad_X`) and removing padded zeros (`_depad_dX`) for
-  a 4D tensor, method for computing the height and width coordinates of the upper left pixel
-  of all image patches (`_img_col_index`), and method for converting the gradient w.r.t. `X`
-  in the format of "patch matrix" to a 4D tensor with the same shape as `X` (`_dX_patchmat2tensor`)
+  It provides methods for 
+    1. Padding zeros (`_pad_X()`) for input 4D tensor;
+    2. Removing padded zeros (`_depad_dX()`) for input 4D tensor;
+    3. Computing the height and width coordinates of the upper left pixel of all image patches 
+      (`_img_col_index()`);
+    4. Converting input 4D tensor into the format of "patch matrix" (`_X_tensor2patchmat()`);
+    5. Converting the gradient w.r.t. input tensor `X` in the format of "patch matrix" to a 4D 
+      tensor with the same shape as `X` (`_dX_patchmat2tensor()`).
 
   Parameters
   ----------
   X: `_BaseOp`;
-    Op that emits a 4D tensor, with dimensions in [batch, in_height, in_width, in_channels]
+    Input 4D tensor, of dimensions in [batch, in_height, in_width, in_channels]
   fsize: `numpy.ndarray`;
     1D array of length 2, specifying filter sizes along height and width axes, e.g. [3, 3]
   strides: `numpy.ndarray`;
     1D array of length 2, specifying strides along height and width axes, e.g. [2, 2]
   padding: `numpy.ndarray`;
-    1D array of length 2, specifying total zero pading along height and width axes, e.g. [2, 2]
+    1D array of length 2, specifying total zero padding along height and width axes, e.g. [2, 2]
   sess: `Session`;
-    The session that the Op is associated with
+    The session in which the Op is defined
   """
   def __init__(self, X, fsize, strides, padding, sess):
     if (X.shape[1] - fsize[0] + padding[0]) % strides[0] != 0 or (X.shape[2] - fsize[1] + \
@@ -399,7 +410,7 @@ class _2dKernelOp(_BaseOp):
     self._img_col_index_val = self._img_col_index()
 
   def _pad_X(self, feed_dict):
-    """Pad a 4D tensor with zeros (or specified value).
+    """Pad a 4D tensor with zeros (or specified value) along `in_height` and `in_width` axes.
 
     Parameters
     ----------
@@ -408,8 +419,7 @@ class _2dKernelOp(_BaseOp):
 
     Returns
     -------
-    X_pad: `numpy.ndarray`;
-      The input 4D array with zero padded
+    `numpy.ndarray`; the input 4D array with zero padded
     """
     _, in_height_pad, in_width_pad, _ = self._X_shape_pad
     pad_top, pad_bot, pad_left, pad_right = self._padding
@@ -422,17 +432,17 @@ class _2dKernelOp(_BaseOp):
     return X_pad
 
   def _depad_dX(self, dX):
-    """Remove padded zeros in a 4D tensor
+    """Remove padded zeros in a 4D tensor.
 
     Parameters
     ----------
-    feed_dict: `dict`;
-      dict: {id(`Op`): `numpy.ndarray`}
+    dX: `numpy.ndarray`;
+      4D array containing gradients w.r.t. zero-padded `X`
 
     Returns
     -------
-    dX: `numpy.ndarray`;
-      4D array, the gradient with respect to the input array `X` (`dX`) where padded zeros are removed
+    `numpy.ndarray`; 4D array containing the gradient w.r.t. the input array `X` (`dX`) where padded
+     zeros are removed
     """
     _, in_height_pad, in_width_pad, _ = self._X_shape_pad
     pad_top, pad_bot, pad_left, pad_right = self._padding
@@ -447,9 +457,22 @@ class _2dKernelOp(_BaseOp):
 
     Returns
     -------
-    img_col_index: `numpy.ndarray`
-      2D array containing 4-tuples of `h`, `w`, `h_idx`, `w_idx`, where `h` and `w` have spacing
-      greater than 1 depending on strides, and `h_idx` and `w_idx` have spaceing of 1. 
+    `numpy.ndarray`; 2D array containing 4-tuples (h, w, h_idx, w_idx), where `h` and `w` 
+    correspond to the height and width indexes of the upper left pixel of each patch within the 
+    input 2D image, and `h_idx` and `w_idx` the height and width indexes of each patch within the
+    output 2D image.
+
+    Given 4px-by-4px image and 2px-by-2px filter with 2px strides along height and width
+    X[0,0]  X[0,1]  X[0,2]  X[0,3]
+    X[1,0]  X[1,1]  X[1,2]  X[1,3]
+    X[2,0]  X[2,1]  X[2,2]  X[2,3]
+    X[3,0]  X[3,1]  X[3,2]  X[3,3]
+
+    [(h, w, h_idx, w_idx)] = 
+      [(0,  0,  0,  0),
+       (0,  2,  0,  1),
+       (2,  0,  1,  0),
+       (2,  2,  1,  1)]
     """
     filter_height, filter_width = self.fsize
     stride_height, stride_width = self.strides
@@ -464,10 +487,37 @@ class _2dKernelOp(_BaseOp):
 
 
   def _X_tensor2patchmat(self, feed_dict):
-    """Convert image columns from input tensor into matrix form
+    """Convert input 4D tensor into 2D tensor in the "patch matrix" format.
 
-    The matrix is 2D array with dimensions in 
-      [batch * out_height * out_width, filter_height * filter_width * in_channels]
+    Input 4D tensor `X` has dimensions [batch, in_height, in_width, in_channels] = [2, 3, 3, 2]
+
+    X[0,0,0,0]  X[0,0,1,0]  X[0,0,2,0]      X[0,0,0,1]  X[0,0,1,1]  X[0,0,2,1]
+    X[0,1,0,0]  X[0,1,1,0]  X[0,1,2,0]      X[0,1,0,1]  X[0,1,1,1]  X[0,1,2,1]
+    X[0,2,0,0]  X[0,2,1,0]  X[0,2,2,0]      X[0,2,0,1]  X[0,2,1,1]  X[0,2,2,1]
+    
+    X[1,0,0,0]  X[1,0,1,0]  X[1,0,2,0]      X[1,0,0,1]  X[1,0,1,1]  X[1,0,2,1]
+    X[1,1,0,0]  X[1,1,1,0]  X[1,1,2,0]      X[1,1,0,1]  X[1,1,1,1]  X[1,1,2,1]
+    X[1,2,0,0]  X[1,2,1,0]  X[1,2,2,0]      X[1,2,0,1]  X[1,2,1,1]  X[1,2,2,1]
+
+    Each 3px-by-3px submatrix corresponds to an image of dimensions [in_height, in_width], and the 
+    four smaller submatrixes form a 2-by-2 "matrix" where the rows corresponds to `batch` and 
+    columns to `in_channels`.
+
+    Given geometric hyperparameters `filter_height`=2 and `filter_width`=2, `X` is converted 
+    into 2D array in the "patch matrix" format of dimensions [out_height * out_width * batch, 
+    in_channels * filter_height * filter_width] where `out_height`=2 and `out_width`=2.
+
+    X[0,0,0,0]  X[0,0,1,0]  X[0,1,0,0]  X[0,1,1,0]  X[0,0,0,1]  X[0,0,1,1]  X[0,1,0,1]  X[0,1,1,1]
+    X[1,0,0,0]  X[1,0,1,0]  X[1,1,0,0]  X[1,1,1,0]  X[1,0,0,1]  X[1,0,1,1]  X[1,1,0,1]  X[1,1,1,1]
+
+    X[0,0,1,0]  X[0,0,2,0]  X[0,1,1,0]  X[0,1,2,0]  X[0,0,1,1]  X[0,0,2,1]  X[0,1,1,1]  X[0,1,2,1]
+    X[1,0,1,0]  X[1,0,2,0]  X[1,1,1,0]  X[1,1,2,0]  X[1,0,1,1]  X[1,0,2,1]  X[1,1,1,1]  X[1,1,2,1]
+
+    X[0,1,0,0]  X[0,1,1,0]  X[0,2,0,0]  X[0,2,1,0]  X[0,1,0,1]  X[0,1,1,1]  X[0,2,0,1]  X[0,2,1,1]
+    X[1,1,0,0]  X[1,1,1,0]  X[1,2,0,0]  X[1,2,1,0]  X[1,1,0,1]  X[1,1,1,1]  X[1,2,0,1]  X[1,2,1,1]
+
+    X[0,1,1,0]  X[0,1,2,0]  X[0,2,1,0]  X[0,2,2,0]  X[0,1,1,1]  X[0,1,2,1]  X[0,2,1,1]  X[0,2,2,1]
+    X[1,1,1,0]  X[1,1,2,0]  X[1,2,1,0]  X[1,2,2,0]  X[1,1,1,1]  X[1,1,2,1]  X[1,2,1,1]  X[1,2,2,1]
 
     Parameters
     ----------
@@ -476,8 +526,7 @@ class _2dKernelOp(_BaseOp):
 
     Returns
     -------
-    X_val_mat: `numpy.ndarray`
-      2D array, matrix
+    `numpy.ndarray` 2D array in the "patch matrix" format
     """
     X_val = self._pad_X(feed_dict)
     filter_height, filter_width = self.fsize
@@ -489,37 +538,30 @@ class _2dKernelOp(_BaseOp):
     return X_val_mat
 
   def _dX_patchmat2tensor(self, dX_val_mat):
-    """Convert the gradient stored in "patch matrix" into 4D tensor with the same shape as `X`
+    """Convert the gradient w.r.t. the "patch matrix" into 4D tensor with the same shape as `X`.
 
-    The conversion is conducted in the following steps:
-
-    1. `dX_val_mat` with dimensions [out_height * out_width * batch, 
-      in_channels * filter_height * filter_width] is reshaped into 6D array with dimensions
-      [out_height, out_width, batch, in_channels, filter_height, filter_width]
-
+    1. `dX_val_mat` of dimensions [out_height * out_width * batch, in_channels * filter_height *
+      filter_width] is reshaped into 6D array of dimensions [out_height, out_width, batch, 
+      in_channels, filter_height, filter_width];
     2. The dimensions in the 6D array is reordered as [out_height, out_width, batch, filter_height,
-      filter_width, in_channels], i.e. reshaped into `dX_val_tmp`
-
-    3. Initialize a zero tensor of shape `self._X_shape_pad`, i.e. `dX_val`
-
-    4. The gradient in each patch of `dX_val_tmp` is added to the corresponding subarray (i.e. patch)
-      in `dX_val`
-
-    5. Removed padded zeros in `dX_val`
+      filter_width, in_channels], as in `dX_val_tmp`;
+    3. Initialize a zero tensor of shape `self._X_shape_pad`, as in `dX_val`;
+    4. The gradient in each patch of `dX_val_tmp` (of dimensions [batch, filter_height, 
+    filter_width, in_channels]) is added to the corresponding subarray in `dX_val`;
+    5. Remove padded zeros in `dX_val`.
 
     Parameters
     ----------
     dX_val_mat: `numpy.ndarray`
-      2D array, the patch matrix, with dimensions [out_height * out_width * batch, 
+      2D array, the patch matrix, of dimensions [out_height * out_width * batch, 
       in_channels * filter_height * filter_width]
 
     Returns
     -------
-    dX_val: `numpy.ndarray`
-      4D tensor, with dimensions [batch, in_height, in_width, in_channels]
+    `numpy.ndarray`; 4D tensor, of dimensions [batch, in_height, in_width, in_channels]
     """
     filter_height, filter_width = self.fsize
-    batch, out_height, out_width, _ = self.shape  
+    batch, out_height, out_width, _ = self.shape
     in_channels = self.X.shape[3]
 
     dX_val_tmp = dX_val_mat.reshape((out_height, out_width, batch, in_channels, filter_height,\
@@ -534,22 +576,20 @@ class _2dKernelOp(_BaseOp):
 
 class Conv2dOp(_2dKernelOp):
   def __init__(self, X, W, strides, padding, sess):
-    """Op that performs 2D convolution on a 4D tensor
-
-    Computes output tensor of dimensions [batch, out_height, out_width, out_channels]
+    """Op that performs 2D convolution between a 4D input tensor `X` and a 4D filter tensor `W`.
 
     Parameters
     ----------
       X: `_BaseOp`;
-        Input 4D tensor, with dimensions in [batch, in_height, in_width, in_channels]
-      W: `_2dKernelOp`;
-        Kernel 4D tensor, with dimensions in [filter_height, filter_width, in_channels, out_channels]
+        Input 4D tensor, of dimensions in [batch, in_height, in_width, in_channels]
+      W: `_BaseOp`;
+        Filter 4D tensor, of dimensions in [filter_height, filter_width, in_channels, out_channels]
       strides: `numpy.ndarray`;
         1D array of length 2, specifying strides along height and width axes, e.g. [2, 2]
       padding: `numpy.ndarray`;
-        1D array of length 2, specifying total zero pading along height and width axes, e.g. [2, 2]
+        1D array of length 2, specifying total zero padding along height and width axes, e.g. [2, 2]
       sess: `Session`;
-        The session that the Op is associated with
+        The session in which the Op is defined
     """
     fsize = W.shape[0], W.shape[1]
     super(Conv2dOp, self).__init__(X, fsize, strides, padding, sess)
@@ -558,10 +598,32 @@ class Conv2dOp(_2dKernelOp):
     self.W.parent_total += 1
 
   def _W_tensor2patchmat(self, feed_dict):
-    """Convert filter tensor into matrix form
+    """Convert 4D filter tensor into "patch matrix" format.
 
-    The matrix is 2D array with dimensions in
-    [in_channels * filter_height * filter_width, out_channels]
+    Filter 4D tensor `W` has dimensions [filter_height, filter_width, in_channels, out_channels] 
+    = [2, 3, 3, 2]
+
+    W[0,0,0,0]  W[0,1,0,0]    W[0,0,1,0]  W[0,1,1,0]
+    W[1,0,0,0]  W[1,1,0,0]    W[1,0,1,0]  W[1,1,1,0]
+
+    W[0,0,0,1]  W[0,1,0,1]    W[0,0,1,1]  W[0,1,1,1]
+    W[1,0,0,1]  W[1,1,0,1]    W[1,0,1,1]  W[1,1,1,1]
+    
+    Each 2px-by-2px submatrix corresponds to a 2D array of dimensions [filter_height, filter_width],
+    and the four smaller submatrixes form a 2-by-2 "matrix" where the rows corresponds to `out_channels`
+    and columns to `in_channels`.
+
+    `W` is converted to 2D array in the "patch matrix" format of dimensions [in_channels * 
+    filter_height * filter_width, out_channels]
+
+    W[0,0,0,0]  W[0,0,0,1]
+    W[0,1,0,0]  W[0,1,0,1]
+    W[1,0,0,0]  W[1,0,0,1]
+    W[1,1,0,0]  W[1,1,0,1]
+    W[0,0,1,0]  W[0,0,1,1]
+    W[0,1,1,0]  W[0,1,1,1]
+    W[1,0,1,0]  W[1,0,1,1]
+    W[1,1,1,0]  W[1,1,1,1]
 
     Parameters
     ----------
@@ -570,8 +632,7 @@ class Conv2dOp(_2dKernelOp):
 
     Returns
     -------
-    W_val_mat: `numpy.ndarray`
-      2D array, matrix
+    `numpy.ndarray`; 2D array, matrix
     """
     W_val = self.W.eval(feed_dict)
     out_channels = self.W.shape[3]
@@ -579,7 +640,13 @@ class Conv2dOp(_2dKernelOp):
     return W_val_mat
 
   def _eval_func(self, feed_dict):
-    """Function that outputs the value of the tensor
+    """Function that outputs the value of the tensor.
+
+    Given `X` and `W` in "patch matrix" format `X_val_mat` and `W_val_mat`, right-multiplying 
+    `W_val_mat` with `X_val_mat` produces 2D array of dimensions [out_height * out_width * batch, 
+    out_channels] `C_val_mat`. `C_val_mat` is then reshaped into 4D tensor of dimensions [out_height,
+    out_width, batch, out_channels], which is then reordered as [batch, out_height, out_width, 
+    out_channels].
 
     Parameters
     ----------
@@ -588,9 +655,7 @@ class Conv2dOp(_2dKernelOp):
 
     Returns
     -------
-    C_val_mat.reshape((out_height, out_width, batch, out_channels)).transpose(2, 0, 1, 3): 
-      `numpy.ndarray`
-      4D tensor, the output of Conv2d(X, W)
+      `numpy.ndarray`; 4D tensor of dimensions [batch, out_height, out_width, out_channels]
     """
     batch, out_height, out_width, out_channels = self.shape
     X_val_mat = self._X_tensor2patchmat(feed_dict)
@@ -599,7 +664,22 @@ class Conv2dOp(_2dKernelOp):
     return C_val_mat.reshape((out_height, out_width, batch, out_channels)).transpose(2, 0, 1, 3)
 
   def _grad_func(self, feed_dict):
-    """Propagate gradient downstream to `X` and `W`
+    """Propagate gradient down to `X` and `W`.
+
+    Given the 4D tensor `grad_val` (i.e. gradient w.r.t. Op's output) of dimensions [batch, out_height,
+    out_width, out_channels], it is reordered into [out_height, out_width, batch, out_channels]
+    and then reshaped into 2D array `grad_val_mat` of dimensions [out_height * out_width * batch,
+    out_channels].
+
+    The gradient w.r.t `W` in the "patch matrix" format is computed by right-multiplying `grad_val_mat`
+    with `X_val_mat.T` (of dimensions [in_channels * filter_height * filter_width, out_height * 
+    out_width * batch]), producing 2D array of dimensions [in_channels * filter_height * filter_width,
+    out_channels].
+
+    The gradient w.r.t. `X` in the "path matrix" format is computed by right-multiplying `W_val_mat.T`
+    (of dimensions [out_channels, in_channels * filter_height * filter_width]) with `grad_val_mat`, 
+    procuding 2D array of dimensions [out_height * out_width * batch, in_channels * filter_height * 
+    filter_width].
 
     Parameters
     ----------
@@ -608,7 +688,7 @@ class Conv2dOp(_2dKernelOp):
     """
     filter_height, filter_width, in_channels, out_channels = self.W.shape
 
-    grad_val = self.sess.grads[id(self)]
+    grad_val = self.sess.gradients[id(self)]
     grad_val_mat = grad_val.transpose(1, 2, 0, 3).reshape((-1, out_channels))
     X_val_mat = self._X_tensor2patchmat(feed_dict)
     W_val_mat = self._W_tensor2patchmat(feed_dict)
@@ -626,14 +706,12 @@ class Conv2dOp(_2dKernelOp):
 
 class MaxPool2dOp(_2dKernelOp):
   def __init__(self, X, fsize, strides, padding, sess):
-    """Op that performs 2D max pooling on a 4D tensor
-
-    Computes output tensor of dimensions [batch, out_height, out_width, out_channels]
+    """Op that performs 2D max-pooling on a 4D tensor.
 
     Parameters
     ----------
       X: `_BaseOp`;
-        Input 4D tensor, with dimensions in [batch, in_height, in_width, in_channels]
+        Input 4D tensor, of dimensions in [batch, in_height, in_width, in_channels]
       fsize: `numpy.ndarray`
         1D array of length 2, specifying filter size along height and width axes, e.g. [2, 2]
       strides: `numpy.ndarray`;
@@ -647,7 +725,7 @@ class MaxPool2dOp(_2dKernelOp):
     self.shape = X.shape[0], self._out_height, self._out_width, X.shape[3]
 
   def _eval_func(self, feed_dict):
-    """Function that outputs the value of the tensor
+    """Function that outputs the value of the tensor.
 
     Parameters
     ----------
@@ -656,8 +734,7 @@ class MaxPool2dOp(_2dKernelOp):
 
     Returns
     -------
-    P_val: `numpy.ndarray`
-      4D tensor, the output of MaxPool(X)
+    `numpy.ndarray`; 4D tensor, the output of MaxPool(X)
     """  
     batch, out_height, out_width, in_channels = self.shape
     X_val_mat = self._X_tensor2patchmat(feed_dict)
@@ -666,7 +743,20 @@ class MaxPool2dOp(_2dKernelOp):
     return P_val
 
   def _grad_func(self, feed_dict):
-    """Propagate gradient downstream to `X`
+    """Propagate gradient down to `X`.
+
+    `X_val_mat` is a 2D array of dimensions [out_height * out_width * batch * in_channels, 
+    filter_height * filter_width], where each row is an indicator vector that indicates the index 
+    of the maximum-intensity pixel.
+
+    Given the 4D tensor `grad_val` (i.e. gradient w.r.t. Op's output) of dimensions [batch, 
+    out_height, out_width, out_channels], it is reordered into [out_height, out_width, batch, 
+    out_channels] and then reshaped into 2D array of dimensions [out_height * out_width * batch 
+    * out_channels, 1]. The 2D array is duplicated (`np.tile`) along the width axis by a factor of
+    `X_val_mat.shape[1]` (i.e. `filter_height` * `filter_width`), producing `grad_val_mat`.
+
+    `X_val_mat` is component-wise multiplied by `grad_val_mat`, which contains the gradient w.r.t.
+    `X` in the "patch matrix" format.
 
     Parameters
     ----------
@@ -679,10 +769,12 @@ class MaxPool2dOp(_2dKernelOp):
     X_val_mat = self._X_tensor2patchmat(feed_dict)
     X_val_mat = np.apply_along_axis(self.__ind_vec, 1, X_val_mat)
 
-    grad_val = self.sess.grads[id(self)]
-    grad_val_mat = np.repeat(grad_val.transpose(1, 2, 0, 3).reshape((-1, 1)), X_val_mat.shape[1], axis=1)
+    grad_val = self.sess.gradients[id(self)]
+    grad_val_mat = np.tile(grad_val.transpose(1, 2, 0, 3).reshape((-1, 1)), (1, X_val_mat.shape[1]))
 
     dX_val_mat = X_val_mat * grad_val_mat
+    dX_val_mat = dX_val_mat.reshape((out_height * out_width * batch, in_channels * filter_height * 
+                  filter_width))
     dX_val = self._dX_patchmat2tensor(dX_val_mat)
 
     self.X.grad(feed_dict, dX_val)
@@ -695,7 +787,7 @@ class MaxPool2dOp(_2dKernelOp):
 
     Parameters
     ----------
-    row: `numpy.ndarray`
+    row: `numpy.ndarray`;
       1D array
     """
     index = np.argmax(row)
@@ -704,9 +796,9 @@ class MaxPool2dOp(_2dKernelOp):
     return ind_vec
 
   def _X_tensor2patchmat(self, feed_dict):
-    """Convert image columns from input tensor into matrix form
+    """Convert input 4D tensor into 2D tensor in the "patch matrix" format.
 
-    The matrix is 2D array with dimensions in 
+    The patch matrix is 2D array of dimensions in 
       [out_height * out_width * batch * in_channels, filter_height * filter_width]
 
     Parameters
@@ -721,35 +813,161 @@ class MaxPool2dOp(_2dKernelOp):
     """
     batch, out_height, out_width, in_channels = self.shape
     filter_height, filter_width = self.fsize
-    self._pv = np.finfo(feed_dict[self.X].dtype).min
+    self._pv = np.finfo(np.float32).min # self._pv = np.finfo(feed_dict[self.X].dtype).min
     X_val_mat = super(MaxPool2dOp, self)._X_tensor2patchmat(feed_dict).\
                 reshape((out_height, out_width, batch, in_channels, filter_height, filter_width)).\
                 reshape((-1, filter_height * filter_width))
     return X_val_mat
-  
 
-class SoftmaxCrossEntropyWithLogitsOp(_BaseOp):
-  """Op that computes the cross-entropy (averaged over all instances) 
 
-  Logits are first transformed into probabilitis by applying softmax function followed by 
-  normalization, then cross-entropy is computed based on probabilities and true class labels.
+class BiasBroadcastOp(_BaseOp):
+  """Op that broadcast the bias.
+
+  For example, given `X` = array([0.1, 0.2, 0.4]) and `shape` = [2, 3, 3]
+  The emitted tensor would be
+  array([[[ 0.1,  0.2,  0.4],
+          [ 0.1,  0.2,  0.4],
+          [ 0.1,  0.2,  0.4]],
+
+         [[ 0.1,  0.2,  0.4],
+          [ 0.1,  0.2,  0.4],
+          [ 0.1,  0.2,  0.4]]])
 
   Parameters
   ----------
+  X: `_BaseOp`;
+    Input 1D tensor containing bias
+  shape: `np.ndarray`;
+    1D array of length >= 1, the last dim must matches dim[0] of X
+  sess: `Session`;
+    The session in which the Op is defined 
+  """
+  def __init__(self, X, shape, sess):
+    if shape[-1] != X.shape[0]:
+      raise ValueError("Last dim of new shape (%d) and dim[0] of X (%d) do not match!" \
+              % (shape[-1], X.shape[0]))
+    super(BiasBroadcastOp, self).__init__(sess)
+    self.X = X
+    self.X.parent_total += 1
+    self.shape = shape
+    self.ones = np.ones((np.prod(self.shape[:-1]), 1))
+  def _eval_func(self, feed_dict):
+    """Function that outputs the value of the tensor.
+
+    Parameters
+    ----------
+    feed_dict: `dict`;
+      dict: {id(`Op`): `numpy.ndarray`}
+
+    Returns
+    -------
+    `numpy.ndarray`; value of tensor containing bias broadcast across dimensions
+    """
+    X_val = self.X.eval(feed_dict).reshape((1, -1))
+    X_tnsr_val = np.dot(self.ones, X_val).reshape(self.shape)
+    return X_tnsr_val
+  def _grad_func(self, feed_dict):
+    """Propagate gradient downstream to `X`.
+
+    Parameters
+    ----------
+    feed_dict: `dict`;
+      dict: {id(`Op`): `numpy.ndarray`}
+    """
+    grad_val = self.sess.gradients[id(self)].reshape((-1, self.X.shape[0]))
+    dX_val = np.dot(self.ones.T, grad_val).reshape(self.X.shape[0])
+    self.X.grad(feed_dict, dX_val)
+
+
+class ReshapeOp(_BaseOp):
+  """Op that reshapes input tensor.
+
+  Paramters
+  ---------
+  X: `_BaseOp`;
+    Input tensor to be reshaped
+  shape: `np.ndarray`;
+    The shape that `X` will be reshaped to
+  sess: `Session`;
+    The session that the Op is associated with  
+  """
+  def __init__(self, X, shape, sess):
+    super(ReshapeOp, self).__init__(sess)
+    self.X = X
+    self.X.parent_total += 1
+    self.shape = shape
+  def _eval_func(self, feed_dict):
+    """Function that outputs the value of the tensor.
+
+    Parameters
+    ----------
+    feed_dict: `dict`;
+      dict: {id(`Op`): `numpy.ndarray`}
+
+    Returns
+    -------
+    `numpy.ndarray`; the n-D array containing the values of the reshaped tensor
+    """
+    X_val = self.X.eval(feed_dict).reshape(self.shape)
+    return X_val
+  def _grad_func(self, feed_dict):
+    """Propagate gradient downstream to `X`
+
+    Parameters
+    ----------
+    feed_dict: `dict`;
+      dict: {id(`Op`): `numpy.ndarray`}
+    """
+    grad_val = self.sess.gradients[id(self)]
+    dX_val = grad_val.reshape(self.X.shape)
+    self.X.grad(feed_dict, dX_val) 
+
+
+class DropoutOp(_BaseOp):
+  def __init__(self, X, keep_prob, sess):
+    super(DropoutOp, self).__init__(sess)
+    self.X = X
+    self.shape = X.shape
+    self.keep_prob = keep_prob
+  def _eval_func(self, feed_dict):
+    X_val = self.X.eval(feed_dict) 
+    mask = self._get_mask() 
+    X_dropout_val = X_val / self.keep_prob
+    X_dropout_val[mask] = 0.
+    return X_dropout_val
+  def _grad_func(self, feed_dict):
+    grad = self.sess.gradients[id(self)]
+    dX_val = grad / self.keep_prob
+    mask = self._get_mask()
+    dX_val[mask] = 0.
+    self.X.grad(feed_dict, dX_val)
+  def _get_mask(self):
+    return np.random.rand(*self.shape) >= self.keep_prob    
+
+
+class SoftmaxCrossEntropyWithLogitsOp(_BaseOp):
+  """Op that computes the cross-entropy
+
+  Logits are first transformed into probabilitis by applying softmax function on each row of 
+  `logits`, then cross-entropy  is computed based on probabilities and true class labels. 
+  Emits tensor of dimension [batch].
+  
+
+  Parameters
+  ----------
+  labels: `_BaseOp`;
+    2D tensor of dimensions [batch, num_of_classes] 
   logits: `_BaseOp`;
     2D tensor of dimensions [batch, num_of_classes]
-  labels: `numpy.ndarray`
-    1D array containing ids of ground truth class labels 
   sess: `Session`;
     The session that the Op is associated with
   """
-  def __init__(self, logits, labels, sess):   
+  def __init__(self, labels, logits, sess):
     super(SoftmaxCrossEntropyWithLogitsOp, self).__init__(sess)
-    self.shape = 1, 1
-    self.logits = logits
+    self.shape = (logits.shape[0],)
     self.labels = labels
+    self.logits = logits
     self.logits.parent_total += 1
-
   def _eval_func(self, feed_dict):
     """Function that outputs the value of the tensor
 
@@ -760,16 +978,14 @@ class SoftmaxCrossEntropyWithLogitsOp(_BaseOp):
 
     Returns
     -------
-    cross_entropy: `numpy.ndarray`
-      Value of tensor (scalar)
+    `numpy.ndarray`; 1D array of dimension [batch]
     """
-    probs = self._eval_softmax(feed_dict)
-    cross_entropy = -np.log(probs[range(probs.shape[0]), self.labels])
-    cross_entropy = cross_entropy.mean()
+    logits_probs_val = self._eval_softmax(feed_dict)
+    labels_val = self.labels.eval(feed_dict)
+    cross_entropy = np.sum(-np.log(logits_probs_val) * labels_val, axis=1)
     return cross_entropy
-   
   def _eval_softmax(self, feed_dict):
-    """Evaluate softmax function
+    """Transform `logits` into probabilities by applying softmax function
 
     Parameters
     ----------
@@ -778,14 +994,12 @@ class SoftmaxCrossEntropyWithLogitsOp(_BaseOp):
 
     Returns
     -------
-    probs: `numpy.ndarray`
-      2D array of dimensions [batch, num_of_classes]
+    `numpy.ndarray`; 2D array of dimensions [batch, num_of_classes]
     """
-    logits = self.logits.eval(feed_dict)
-    probs = np.exp(logits)
-    probs = probs / probs.sum(axis=1, keepdims=True)
-    return probs
-
+    logits_val = self.logits.eval(feed_dict)
+    logits_probs_val = np.exp(logits_val)
+    logits_probs_val = logits_probs_val / logits_probs_val.sum(axis=1, keepdims=True)
+    return logits_probs_val
   def _grad_func(self, feed_dict):
     """Propagate gradient downstream to `logits`
 
@@ -794,29 +1008,123 @@ class SoftmaxCrossEntropyWithLogitsOp(_BaseOp):
     feed_dict: `dict`;
       dict: {id(`Op`): `numpy.ndarray`}
     """
-    grad_val = self.sess.grads[id(self)]
-    probs = self._eval_softmax(feed_dict)
-    dscores = probs
-    dscores[range(dscores.shape[0]), self.labels] -= 1.
-    dscores /= dscores.shape[0]
-    self.logits.grad(feed_dict, grad_val * dscores)
+    grad_val = self.sess.gradients[id(self)]
+    logits_probs_val = self._eval_softmax(feed_dict)
+    labels_val = self.labels.eval(feed_dict)
+    dlogits_val = logits_probs_val - labels_val
+    dlogits_val = grad_val.reshape((-1, 1)) * dlogits_val
+    self.logits.grad(feed_dict, dlogits_val)
 
+
+class ReduceMeanOp(_BaseOp):
+  """Op that reduce a tensor to its mean (average) along an axis
+
+  Parameters
+  ----------
+  X: `_BaseOp`;
+    Input tensor
+  axis: integer;
+    The axis along which `X` is averaged
+  sess: `Session`;
+    The session that the Op is associated with 
+  """
+  def __init__(self, X, axis, sess):
+    super(ReduceMeanOp, self).__init__(sess)
+    self.shape = X.shape[:axis] + X.shape[axis + 1:]
+    self.X = X
+    self.axis = axis
+    self.X.parent_total = 1
+  def _eval_func(self, feed_dict):
+    """Function that outputs the value of the tensor
+
+    Parameters
+    ----------
+    feed_dict: `dict`;
+      dict: {id(`Op`): `numpy.ndarray`}
+
+    Returns
+    -------
+    `numpy.ndarray`; N-D array with one less dimension than `X`
+    """    
+    X_reduce_mean_val = self.X.eval(feed_dict).mean(axis=self.axis)
+    return X_reduce_mean_val
+  def _grad_func(self, feed_dict):
+    """Propagate gradient downstream to `X`
+
+    Parameters
+    ----------
+    feed_dict: `dict`;
+      dict: {id(`Op`): `numpy.ndarray`}
+    """    
+    axis, shape = self.axis, self.shape
+    grad_val = self.sess.gradients[id(self)] / self.X.shape[axis]
+    grad_val = grad_val.reshape((int(np.prod(shape[:axis])), int(np.prod(shape[axis:]))))
+    grad_val = np.tile(grad_val, (1, self.X.shape[axis]))
+    dX_val = grad_val.reshape(self.X.shape)
+    self.X.grad(feed_dict, dX_val)
 
 class Session(object):
   """ Session that keeps track of the following info of all the Operations (Op) in a computational
   graph across iterations of backpropagation:
-    `vars`: Op's
-    `vals`: Value of tensor emitted from an Op, given a `feed_dict` to the `Placeholder`
-    `grads`: Gradient with respect to tensor emitted from an Op, given a 'feed_dict' to `Placeholder`
+    `variables`: Op's
+    `values`: Value of each node (i.e. tensor emitted by `Op`) in the graph  
+    `gradients`: Gradients w.r.t. each node (i.e. tensor emitted by `Op`) in the graph
   """
   def __init__(self):
-    self.vals = {}
-    self.grads = {}
-    self.vars = []
+    self.variables = []
+    self.values = {}
+    self.gradients = {}
+
+  def _set_loss_tensor(self, loss_tensor, feed_dict):
+    loss_tensor.parent_total = 1
+    loss_tensor.grad(feed_dict, 1.)
+
+  def sgd_update(self, feed_dict, params, loss_tensor):
+    self._set_loss_tensor(loss_tensor, feed_dict)
+
+    learning_rate = params["learning_rate"]
+
+    tensor_value_list = [(tensor, value) for tensor, value in zip(feed_dict.keys(), feed_dict.values())
+                          if tensor.is_variable]
+    updated_value_list = [value - learning_rate * self.gradients[id(tensor)]
+                            for tensor, value in tensor_value_list]
+
+    tensor_value_list = zip(*tensor_value_list)
+    tensor_value_list[1] = updated_value_list
+    tensor_value_list = zip(*tensor_value_list)
+
+    feed_dict.update(dict(tensor_value_list))
+    self.reset()
+
+  def adam_update(self, feed_dict, params, loss_tensor):
+    self._set_loss_tensor(loss_tensor, feed_dict)
+
+    alpha = params["alpha"]
+    beta1 = params["beta1"]
+    beta2 = params["beta2"]
+    epsilon = params["epsilon"]
+    t = params["t"]
+    m = params["m"]
+    v = params["v"]   
+
+    alpha_t = alpha * np.sqrt(1 - np.power(beta2, t)) / (1 - np.power(beta1, t)) if t >= 1 else alpha
+
+    for tensor in feed_dict.keys():
+      if not tensor.is_variable:
+        continue
+      g = self.gradients[id(tensor)]
+      m[tensor] = beta1 * m[tensor] + (1 - beta1) * g
+      v[tensor] = beta2 * v[tensor] + (1 - beta2) * g * g
+      feed_dict[tensor] += -alpha_t * m[tensor] / (np.sqrt(v[tensor]) + epsilon) 
+
+    params["m"] = m
+    params["v"] = v
+    params["t"] += 1
+    self.reset()   
 
   def reset(self):
-    """Reset info associated with Op's in each iteration"""
-    self.vals = {}
-    self.grads = {}
-    for tensor in self.vars:
-      tensor.parent_acc = 0
+    """Reset data associated with Op's in each iteration"""
+    self.values = {}
+    self.gradients = {}
+    for op in self.variables:
+      op.parent_acc = 0
