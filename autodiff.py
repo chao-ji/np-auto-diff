@@ -56,10 +56,11 @@ class _BaseOp(object):
     child Op's. 
 
     NOTE: `grad` is invoked when a parent Op propagates gradient (`backprop`) back to the current
-    Op. This gradient is accumulated and `parent_acc` is incremented, which maintains the number
-    of parent Op's that have already backpropped gradients. The computation of the gradient w.r.t.
-    the current Op is finished when `parent_acc` == `parent_total`, and this gradient is further 
-    propagated down to child Op's of the current Op by invoking `self._grad_func(feed_dict)`.
+    Op. When `grad` is invoked, the gradient is accumulated and `parent_acc` is incremented, which
+    maintains the number of parent Op's that have already backpropped gradients. The computation of
+    the gradient w.r.t. the current Op is finished when `parent_acc` == `parent_total`, and this 
+    gradient is further propagated down to child Op's of the current Op by invoking 
+    `self._grad_func(feed_dict)`.
 
     Parameters
     ----------
@@ -226,8 +227,8 @@ class ParamRegOp(_BaseOp):
     super(ParamRegOp, self).__init__(sess)
     self.shape = 1, 1
     self.W = W
-    self.reg = reg
     self.W.parent_total += 1
+    self.reg = reg
 
   def _eval_func(self, feed_dict):
     """Function that outputs the value of the tensor.
@@ -847,9 +848,9 @@ class BiasBroadcastOp(_BaseOp):
       raise ValueError("Last dim of new shape (%d) and dim[0] of X (%d) do not match!" \
               % (shape[-1], X.shape[0]))
     super(BiasBroadcastOp, self).__init__(sess)
+    self.shape = shape
     self.X = X
     self.X.parent_total += 1
-    self.shape = shape
     self.ones = np.ones((np.prod(self.shape[:-1]), 1))
   def _eval_func(self, feed_dict):
     """Function that outputs the value of the tensor.
@@ -893,9 +894,9 @@ class ReshapeOp(_BaseOp):
   """
   def __init__(self, X, shape, sess):
     super(ReshapeOp, self).__init__(sess)
+    self.shape = shape
     self.X = X
     self.X.parent_total += 1
-    self.shape = shape
   def _eval_func(self, feed_dict):
     """Function that outputs the value of the tensor.
 
@@ -911,7 +912,7 @@ class ReshapeOp(_BaseOp):
     X_val = self.X.eval(feed_dict).reshape(self.shape)
     return X_val
   def _grad_func(self, feed_dict):
-    """Propagate gradient downstream to `X`
+    """Propagate gradient downstream to `X`.
 
     Parameters
     ----------
@@ -920,29 +921,71 @@ class ReshapeOp(_BaseOp):
     """
     grad_val = self.sess.gradients[id(self)]
     dX_val = grad_val.reshape(self.X.shape)
-    self.X.grad(feed_dict, dX_val) 
+    self.X.grad(feed_dict, dX_val)
 
 
 class DropoutOp(_BaseOp):
-  def __init__(self, X, keep_prob, sess):
+  """Op that implements dropout.
+
+  In input tensor `X`, a random subset of units are forced to output zero with probability 
+  `1 - KEEP_PROB`, while the output of the remaining units is scaled up by `1 / self.KEEP_PROB`.
+  
+  Paramters
+  ---------
+  X: `_BaseOp`;
+    Input tensor in which a random subset of units is forced to output zero
+  KEEP_PROB: `_BaseOp`;
+    The probability with which each unit in `X` is kept (i.e. not forced to output zero) 
+  sess: `Session`;
+    The session that the Op is associated with
+  """
+  def __init__(self, X, KEEP_PROB, sess):
     super(DropoutOp, self).__init__(sess)
-    self.X = X
     self.shape = X.shape
-    self.keep_prob = keep_prob
+    self.X = X
+    self.KEEP_PROB = KEEP_PROB
+    self.X.parent_total += 1
+    self.KEEP_PROB.parent_total += 1
   def _eval_func(self, feed_dict):
-    X_val = self.X.eval(feed_dict) 
-    mask = self._get_mask() 
-    X_dropout_val = X_val / self.keep_prob
+    """Function that outputs the value of the tensor.
+
+    Parameters
+    ----------
+    feed_dict: `dict`;
+      dict: {id(`Op`): `numpy.ndarray`}
+
+    Returns
+    -------
+    `numpy.ndarray`; the n-D array containing the values of `self.X` after dropout
+    """
+    X_val = self.X.eval(feed_dict)
+    mask = self._get_mask(feed_dict)
+    X_dropout_val = X_val / self.KEEP_PROB.eval(feed_dict) 
     X_dropout_val[mask] = 0.
     return X_dropout_val
   def _grad_func(self, feed_dict):
-    grad = self.sess.gradients[id(self)]
-    dX_val = grad / self.keep_prob
-    mask = self._get_mask()
+    """Propagate gradient downstream to `X`.
+
+    Parameters
+    ----------
+    feed_dict: `dict`;
+      dict: {id(`Op`): `numpy.ndarray`}
+    """
+    grad_val = self.sess.gradients[id(self)]
+    dX_val = grad_val / self.KEEP_PROB.eval(feed_dict)
+    mask = self._get_mask(feed_dict)
     dX_val[mask] = 0.
     self.X.grad(feed_dict, dX_val)
-  def _get_mask(self):
-    return np.random.rand(*self.shape) >= self.keep_prob    
+  def _get_mask(self, feed_dict):
+    """Compute a boolean-valued tensor the same shape as `X` containing indicator variables
+    (True if the component is to be dropped, False if the component is to be kept).
+
+    Parameters
+    ----------
+    feed_dict: `dict`;
+      dict: {id(`Op`): `numpy.ndarray`}
+    """
+    return np.random.rand(*self.shape) >= self.KEEP_PROB.eval(feed_dict)
 
 
 class SoftmaxCrossEntropyWithLogitsOp(_BaseOp):
@@ -967,6 +1010,7 @@ class SoftmaxCrossEntropyWithLogitsOp(_BaseOp):
     self.shape = (logits.shape[0],)
     self.labels = labels
     self.logits = logits
+    self.labels.parent_total += 1
     self.logits.parent_total += 1
   def _eval_func(self, feed_dict):
     """Function that outputs the value of the tensor
@@ -1032,8 +1076,8 @@ class ReduceMeanOp(_BaseOp):
     super(ReduceMeanOp, self).__init__(sess)
     self.shape = X.shape[:axis] + X.shape[axis + 1:]
     self.X = X
-    self.axis = axis
     self.X.parent_total = 1
+    self.axis = axis
   def _eval_func(self, feed_dict):
     """Function that outputs the value of the tensor
 
@@ -1063,6 +1107,7 @@ class ReduceMeanOp(_BaseOp):
     dX_val = grad_val.reshape(self.X.shape)
     self.X.grad(feed_dict, dX_val)
 
+
 class Session(object):
   """ Session that keeps track of the following info of all the Operations (Op) in a computational
   graph across iterations of backpropagation:
@@ -1082,11 +1127,11 @@ class Session(object):
   def sgd_update(self, feed_dict, params, loss_tensor):
     self._set_loss_tensor(loss_tensor, feed_dict)
 
-    learning_rate = params["learning_rate"]
+    alpha = params["alpha"]
 
     tensor_value_list = [(tensor, value) for tensor, value in zip(feed_dict.keys(), feed_dict.values())
                           if tensor.is_variable]
-    updated_value_list = [value - learning_rate * self.gradients[id(tensor)]
+    updated_value_list = [value - alpha * self.gradients[id(tensor)]
                             for tensor, value in tensor_value_list]
 
     tensor_value_list = zip(*tensor_value_list)
@@ -1121,6 +1166,11 @@ class Session(object):
     params["v"] = v
     params["t"] += 1
     self.reset()   
+
+  def eval_tensor(self, tensor, feed_dict):
+    tensor_val = tensor.eval(feed_dict)
+    self.reset()
+    return tensor_val
 
   def reset(self):
     """Reset data associated with Op's in each iteration"""
