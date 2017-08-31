@@ -49,7 +49,6 @@ w_fc1 = np.random.normal(scale=0.1, size=W_FC1.shape)
 b_fc1 = np.ones(B_FC1.shape) * 0.1
 w_fc2 = np.random.normal(scale=0.1, size=W_FC2.shape)
 b_fc2 = np.ones(B_FC2.shape) * 0.1
-p = .5
 
 feed_dict = { W_CONV1: w_conv1,
               B_CONV1: b_conv1,
@@ -60,7 +59,7 @@ feed_dict = { W_CONV1: w_conv1,
               W_FC2: w_fc2,
               B_FC2: b_fc2}
 
-params = {"alpha":  1e-4,
+params = {"alpha":  1e-3,
           "beta1":  .9,
           "beta2":  .999,
           "epsilon":  1e-8,
@@ -87,13 +86,13 @@ for i in range(iterations):
 
   feed_dict[X] = batch_xs.reshape((batch, 28, 28, 1))
   feed_dict[Y_] = batch_ys
-  feed_dict[P] = p 
+  feed_dict[P] = .5
  
   if i % 50 == 0:
     Y_CONV_val = Y_CONV.eval(feed_dict)
     print "iteration: %d, train accuracy: %f" % (i, np.mean(np.argmax(Y_CONV_val, axis=1) == np.argmax(batch_ys, axis=1)))
 
-  sess.adam_update(feed_dict, params, CROSS_ENTROPY)
+  sess.adam_update(params, CROSS_ENTROPY, feed_dict)
 
 y_pred = np.array([])
 y_true = np.array([])
@@ -103,7 +102,6 @@ for i in range(0, mnist.test.images.shape[0], batch):
   Y_CONV_val = sess.eval_tensor(Y_CONV, feed_dict)
   y_pred = np.append(y_pred, np.argmax(Y_CONV_val, axis=1))
   y_true = np.append(y_true, np.argmax(mnist.test.labels[i : i + batch], axis=1))
-  sess.reset()
 
 test_accuracy = np.mean(y_pred == y_true)
 print "accuracy =", test_accuracy
