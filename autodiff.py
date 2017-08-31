@@ -946,6 +946,7 @@ class DropoutOp(_BaseOp):
     self.KEEP_PROB = KEEP_PROB
     self.X.parent_total += 1
     self.KEEP_PROB.parent_total += 1
+    self._mask = None
   def _eval_func(self, feed_dict):
     """Function that outputs the value of the tensor.
 
@@ -959,9 +960,9 @@ class DropoutOp(_BaseOp):
     `numpy.ndarray`; the n-D array containing the values of `self.X` after dropout
     """
     X_val = self.X.eval(feed_dict)
-    mask = self._get_mask(feed_dict)
     X_dropout_val = X_val / self.KEEP_PROB.eval(feed_dict) 
-    X_dropout_val[mask] = 0.
+    self._set_mask(feed_dict)
+    X_dropout_val[self._mask] = 0.
     return X_dropout_val
   def _grad_func(self, feed_dict):
     """Propagate gradient downstream to `X`.
@@ -973,8 +974,8 @@ class DropoutOp(_BaseOp):
     """
     grad_val = self.sess.gradients[id(self)]
     dX_val = grad_val / self.KEEP_PROB.eval(feed_dict)
-    mask = self._get_mask(feed_dict)
-    dX_val[mask] = 0.
+    self._set_mask(feed_dict)
+    dX_val[self._mask] = 0.
     self.X.grad(feed_dict, dX_val)
   def _get_mask(self, feed_dict):
     """Compute a boolean-valued tensor the same shape as `X` containing indicator variables
@@ -987,6 +988,19 @@ class DropoutOp(_BaseOp):
     """
     return np.random.rand(*self.shape) >= self.KEEP_PROB.eval(feed_dict)
 
+  def _set_mask(self, feed_dict):
+    """Set the masking tensor containing indicator variables if None.
+
+    Parameters
+    ----------
+    feed_dict: `dict`;
+      dict: {id(`Op`): `numpy.ndarray`}
+    """
+    if self._mask is None:
+      self._mask = self._get_mask(feed_dict)
+  def _reset_mask(self):
+    """Reset `self._mask` to None"""
+    self._mask = None
 
 class SoftmaxCrossEntropyWithLogitsOp(_BaseOp):
   """Op that computes the cross-entropy
@@ -1079,7 +1093,7 @@ class ReduceMeanOp(_BaseOp):
     self.X.parent_total = 1
     self.axis = axis
   def _eval_func(self, feed_dict):
-    """Function that outputs the value of the tensor
+    """Function that outputs the value of the tensor.
 
     Parameters
     ----------
@@ -1093,7 +1107,7 @@ class ReduceMeanOp(_BaseOp):
     X_reduce_mean_val = self.X.eval(feed_dict).mean(axis=self.axis)
     return X_reduce_mean_val
   def _grad_func(self, feed_dict):
-    """Propagate gradient downstream to `X`
+    """Propagate gradient downstream to `X`.
 
     Parameters
     ----------
@@ -1120,12 +1134,42 @@ class Session(object):
     self.values = {}
     self.gradients = {}
 
-  def _set_loss_tensor(self, loss_tensor, feed_dict):
-    loss_tensor.parent_total = 1
-    loss_tensor.grad(feed_dict, 1.)
+  def _start(self, obj_tensor, feed_dict):
+    """Set the objective tensor and kicks off the gradient computation. 
 
-  def sgd_update(self, feed_dict, params, loss_tensor):
-    self._set_loss_tensor(loss_tensor, feed_dict)
+    This function sets `parent_total` of `obj_tensor` to 1 and the gradient w.r.t to 
+    `obj_tensor` is set to 1., and this gradient is backpropped THROUGHOUT THE ENTIRE COMPUTATIONAL
+    GRAPH by invoking the `grad()` and `_grad_func()` method of each Op recursively. In the end the
+    gradient w.r.t each Op (except for tensors containing constant input data) is computed and 
+    stored in the dict `sess.gradients`.
+    
+    Parameters
+    ----------
+    obj_tensor: `_BaseOp`;
+      The objective function to be optimized (e.g. loss), with shape (1, 1) or ()
+    feed_dict: `dict`;
+      dict: {id(`Op`): `numpy.ndarray`}
+
+    Returns
+    -------
+    `numpy.ndarray`; N-D array with one less dimension than `X`
+    """
+    obj_tensor.parent_total = 1
+    obj_tensor.grad(feed_dict, 1.)
+
+  def sgd_update(self, params, obj_tensor, feed_dict):
+    """Update the tunable parameters using SGD algorithm.
+
+    Parameters
+    ----------
+    params: `params`;
+      dict: containing hyperparameters
+    obj_tensor: `_BaseOp`;
+      The objective function to be optimized (e.g. loss), with shape (1, 1) or ()
+    feed_dict: `dict`;
+      dict: {id(`Op`): `numpy.ndarray`}
+    """
+    self._start(obj_tensor, feed_dict)
 
     alpha = params["alpha"]
 
@@ -1139,10 +1183,23 @@ class Session(object):
     tensor_value_list = zip(*tensor_value_list)
 
     feed_dict.update(dict(tensor_value_list))
-    self.reset()
+    self._reset()
 
-  def adam_update(self, feed_dict, params, loss_tensor):
-    self._set_loss_tensor(loss_tensor, feed_dict)
+  def adam_update(self, params, obj_tensor, feed_dict):
+    """Update the tunable parameters using ADAM algorithm.
+
+    http://arxiv.org/abs/1412.6980
+
+    Parameters
+    ----------
+    params: `params`;
+      dict: containing hyperparameters
+    obj_tensor: `_BaseOp`;
+      The objective function to be optimized (e.g. loss), with shape (1, 1) or ()
+    feed_dict: `dict`;
+      dict: {id(`Op`): `numpy.ndarray`}
+    """
+    self._start(obj_tensor, feed_dict)
 
     alpha = params["alpha"]
     beta1 = params["beta1"]
@@ -1165,16 +1222,27 @@ class Session(object):
     params["m"] = m
     params["v"] = v
     params["t"] += 1
-    self.reset()   
+    self._reset()   
 
   def eval_tensor(self, tensor, feed_dict):
+    """Evaluate a tensor.
+
+    Parameters
+    ----------
+    tensor: `_BaseOp`;
+      The tensor whose value is to be computed
+    feed_dict: `dict`;
+      dict: {id(`Op`): `numpy.ndarray`}
+    """
     tensor_val = tensor.eval(feed_dict)
-    self.reset()
+    self._reset()
     return tensor_val
 
-  def reset(self):
+  def _reset(self):
     """Reset data associated with Op's in each iteration"""
     self.values = {}
     self.gradients = {}
     for op in self.variables:
       op.parent_acc = 0
+      if op.__class__ == DropoutOp:
+        op._reset_mask()
