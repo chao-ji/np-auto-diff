@@ -13,8 +13,8 @@ b = np.random.normal(scale=0.01, size=(1, 10))
 
 sess = Session()
 
-X = PlaceholderOp([batch_size, 784], sess)
-Y = PlaceholderOp([batch_size, 10], sess)
+X = PlaceholderOp([batch_size, 784], sess, False)
+Y = PlaceholderOp([batch_size, 10], sess, False)
 W = PlaceholderOp([784, 10], sess)
 B = PlaceholderOp([10], sess)
 S = AddOp(MatMulOp(X, W, sess), BiasBroadcastOp(B, [batch_size, 10], sess), sess)
@@ -22,8 +22,7 @@ H = ReduceMeanOp(SoftmaxCrossEntropyWithLogitsOp(Y, S, sess), 0, sess)
 F = AddOp(H, ParamRegOp(W, reg, sess), sess)
 
 feed_dict = {W: w, B: b}
-params = {"alpha": 1e-1}
-step_size = 1e-1
+params = {"alpha": 1e-3}
 for ii in xrange(iterations):
   batch_xs, batch_ys = mnist.train.next_batch(batch_size)
 
@@ -35,7 +34,7 @@ for ii in xrange(iterations):
     S_val = S.eval(feed_dict)
     print "iteration: %d, loss: %f, train accuracy: %f" % (ii, F_val, np.mean(np.argmax(S_val, axis=1) == np.argmax(batch_ys, axis=1)))
 
-  sess.sgd_update(feed_dict, params, F)
+  sess.sgd_update(params, F, feed_dict)
 
 print "Test stage:"
 
