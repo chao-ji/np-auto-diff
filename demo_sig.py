@@ -65,7 +65,7 @@ for ii in xrange(50000):
   if ii % 1000 == 0:
     print "iteration %d: loss: %f" % (ii, LL.eval(feed_dict))
 
-  sess.sgd_update(feed_dict, params, LL)
+  sess.sgd_update(params, LL, feed_dict)
 
 s_val = sess.eval_tensor(S, feed_dict)
 print "accuracy: %f" % np.mean(np.argmax(s_val, axis=1) == np.argmax(y, axis=1))
