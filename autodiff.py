@@ -29,7 +29,6 @@ class _BaseOp(object):
     self.parent_acc = 0
     self.is_terminal = False 
     self.sess.variables.append(self)
-   
 
   def eval(self, feed_dict):
     """Evaluate the current Op.
@@ -48,7 +47,6 @@ class _BaseOp(object):
     if id(self) not in self.sess.values:
       self.sess.values[id(self)] = self._eval_func(feed_dict)
     return self.sess.values[id(self)]
- 
 
   def grad(self, feed_dict, backprop):
     """Update the gradient w.r.t. the current Op (`backprop`), and propagate gradient down to 
@@ -486,7 +484,6 @@ class _2dKernelOp(_BaseOp):
                         stride_width))])
     return img_col_index
 
-
   def _X_tensor2patchmat(self, feed_dict):
     """Convert input 4D tensor into 2D tensor in the "patch matrix" format.
 
@@ -852,6 +849,7 @@ class BiasBroadcastOp(_BaseOp):
     self.X = X
     self.X.parent_total += 1
     self.ones = np.ones((np.prod(self.shape[:-1]), 1))
+
   def _eval_func(self, feed_dict):
     """Function that outputs the value of the tensor.
 
@@ -867,6 +865,7 @@ class BiasBroadcastOp(_BaseOp):
     X_val = self.X.eval(feed_dict).reshape((1, -1))
     X_tnsr_val = np.dot(self.ones, X_val).reshape(self.shape)
     return X_tnsr_val
+
   def _grad_func(self, feed_dict):
     """Propagate gradient downstream to `X`.
 
@@ -897,6 +896,7 @@ class ReshapeOp(_BaseOp):
     self.shape = shape
     self.X = X
     self.X.parent_total += 1
+
   def _eval_func(self, feed_dict):
     """Function that outputs the value of the tensor.
 
@@ -911,6 +911,7 @@ class ReshapeOp(_BaseOp):
     """
     X_val = self.X.eval(feed_dict).reshape(self.shape)
     return X_val
+
   def _grad_func(self, feed_dict):
     """Propagate gradient downstream to `X`.
 
@@ -947,6 +948,7 @@ class DropoutOp(_BaseOp):
     self.X.parent_total += 1
     self.KEEP_PROB.parent_total += 1
     self._mask = None
+
   def _eval_func(self, feed_dict):
     """Function that outputs the value of the tensor.
 
@@ -964,6 +966,7 @@ class DropoutOp(_BaseOp):
     self._set_mask(feed_dict)
     X_dropout_val[self._mask] = 0.
     return X_dropout_val
+
   def _grad_func(self, feed_dict):
     """Propagate gradient downstream to `X`.
 
@@ -977,6 +980,7 @@ class DropoutOp(_BaseOp):
     self._set_mask(feed_dict)
     dX_val[self._mask] = 0.
     self.X.grad(feed_dict, dX_val)
+
   def _get_mask(self, feed_dict):
     """Compute a boolean-valued tensor the same shape as `X` containing indicator variables
     (True if the component is to be dropped, False if the component is to be kept).
@@ -998,9 +1002,11 @@ class DropoutOp(_BaseOp):
     """
     if self._mask is None:
       self._mask = self._get_mask(feed_dict)
+
   def _reset_mask(self):
     """Reset `self._mask` to None"""
     self._mask = None
+
 
 class SoftmaxCrossEntropyWithLogitsOp(_BaseOp):
   """Op that computes the cross-entropy
@@ -1026,6 +1032,7 @@ class SoftmaxCrossEntropyWithLogitsOp(_BaseOp):
     self.logits = logits
     self.labels.parent_total += 1
     self.logits.parent_total += 1
+
   def _eval_func(self, feed_dict):
     """Function that outputs the value of the tensor
 
@@ -1042,6 +1049,7 @@ class SoftmaxCrossEntropyWithLogitsOp(_BaseOp):
     labels_val = self.labels.eval(feed_dict)
     cross_entropy = np.sum(-np.log(logits_probs_val) * labels_val, axis=1)
     return cross_entropy
+
   def _eval_softmax(self, feed_dict):
     """Transform `logits` into probabilities by applying softmax function
 
@@ -1058,6 +1066,7 @@ class SoftmaxCrossEntropyWithLogitsOp(_BaseOp):
     logits_probs_val = np.exp(logits_val)
     logits_probs_val = logits_probs_val / logits_probs_val.sum(axis=1, keepdims=True)
     return logits_probs_val
+
   def _grad_func(self, feed_dict):
     """Propagate gradient downstream to `logits`
 
@@ -1092,6 +1101,7 @@ class ReduceMeanOp(_BaseOp):
     self.X = X
     self.X.parent_total = 1
     self.axis = axis
+
   def _eval_func(self, feed_dict):
     """Function that outputs the value of the tensor.
 
@@ -1106,6 +1116,7 @@ class ReduceMeanOp(_BaseOp):
     """    
     X_reduce_mean_val = self.X.eval(feed_dict).mean(axis=self.axis)
     return X_reduce_mean_val
+
   def _grad_func(self, feed_dict):
     """Propagate gradient downstream to `X`.
 
