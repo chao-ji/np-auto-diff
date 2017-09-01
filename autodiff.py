@@ -10,7 +10,7 @@ class _BaseOp(object):
       1D array, e.g. [2, 3, 3, 2], specifying the shape of the emitted tensor
     parent_total: integer;
       Total number of Op's for wihch the current Op is an argument; this is determined when
-      the computational graph was defined in the beginning
+      the data flow graph was defined in the beginning
     parent_acc: integer;
       Initialized to zero; it keeps track of the number of parent Op's that have backpropped
       gradients to the current Op in an iteration
@@ -83,7 +83,7 @@ class _BaseOp(object):
 
 class PlaceholderOp(_BaseOp):
   """Creates placeholder for input or parameters.
-  NOTE: placeholders must be terminal nodes of the computational graph, so it does not implement
+  NOTE: placeholders must be terminal nodes of the data flow graph, so it does not implement
   the `_grad_func()` method.
 
   Parameters
@@ -1134,7 +1134,7 @@ class ReduceMeanOp(_BaseOp):
 
 
 class Session(object):
-  """ Session that keeps track of the following info of all the Operations (Op) in a computational
+  """ Session that keeps track of the following info of all the Operations (Op) in a data flow 
   graph across iterations of backpropagation:
     `variables`: Op's
     `values`: Value of each node (i.e. tensor emitted by `Op`) in the graph  
@@ -1149,7 +1149,7 @@ class Session(object):
     """Set the objective tensor and kicks off the gradient computation. 
 
     This function sets `parent_total` of `obj_tensor` to 1 and the gradient w.r.t to 
-    `obj_tensor` is set to 1., and this gradient is backpropped THROUGHOUT THE ENTIRE COMPUTATIONAL
+    `obj_tensor` is set to 1., and this gradient is backpropped THROUGHOUT THE ENTIRE DATA FLOW 
     GRAPH by invoking the `grad()` and `_grad_func()` method of each Op recursively. In the end the
     gradient w.r.t each Op (except for tensors containing constant input data) is computed and 
     stored in the dict `sess.gradients`.
