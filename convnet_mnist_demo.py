@@ -89,7 +89,7 @@ for i in range(iterations):
   feed_dict[P] = .5
  
   if i % 50 == 0:
-    Y_CONV_val = Y_CONV.eval(feed_dict)
+    Y_CONV_val = sess.eval_tensor(Y_CONV, feed_dict)
     print "iteration: %d, train accuracy: %f" % (i, np.mean(np.argmax(Y_CONV_val, axis=1) == np.argmax(batch_ys, axis=1)))
 
   sess.adam_update(params, CROSS_ENTROPY, feed_dict)
