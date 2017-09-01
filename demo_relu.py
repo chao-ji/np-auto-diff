@@ -63,7 +63,7 @@ for ii in xrange(50000):
   feed_dict[Y] = y
 
   if ii % 1000 == 0:
-    print "iteration %d: loss: %f" % (ii, LL.eval(feed_dict))
+    print "iteration %d: loss: %f" % (ii, sess.eval_tensor(LL, feed_dict))
 
   sess.sgd_update(params, LL, feed_dict)
 
