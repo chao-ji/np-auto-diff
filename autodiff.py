@@ -1324,7 +1324,7 @@ class MomentsOp(_BaseOp):
   """Op that emits the mean and variance of input tensor `X` over axes `axes`.
 
   The dimensions of `X` are kept in mean and variance. For example, `X` has shape
-  [2, 3, 5, 4], and `axes` = [0, 3], then the resulting mean and variance have shape
+  [2, 3, 5, 4], and `axes_drop` = [0, 3], then the resulting mean and variance have shape
   [1, 3, 5, 1], and the output of `_eval_func` has shape [2, 1, 3, 5, 1].
 
   Parameters
@@ -1517,6 +1517,7 @@ class Session(object):
     `variables`: Op's
     `values`: Value of each node (i.e. tensor emitted by `Op`) in the graph  
     `gradients`: Gradients w.r.t. each node (i.e. tensor emitted by `Op`) in the graph
+    `dtype`: Data type of arrays
   """
   def __init__(self, dtype=np.float32):
     self.variables = []
@@ -1560,14 +1561,10 @@ class Session(object):
     alpha = params["alpha"]
     tensor_value_list = [(tensor, value) for tensor, value in zip(feed_dict.keys(), 
                           feed_dict.values()) if tensor.is_variable]
-    updated_value_list = [value - alpha * self.gradients[id(tensor)]
-                            for tensor, value in tensor_value_list]
-
-    tensor_value_list = zip(*tensor_value_list)
-    tensor_value_list[1] = updated_value_list
-    tensor_value_list = zip(*tensor_value_list)
-
-    feed_dict.update(dict(tensor_value_list))
+    updated_value_list = [(tensor, value - alpha * self.gradients[id(tensor)])
+                            for tensor, value in tensor_value_list if id(tensor) in self.gradients]
+    for tensor, value in updated_value_list:
+      feed_dict[tensor] = value
     self._reset()
 
   def adam_update(self, params, obj_tensor, feed_dict):
@@ -1586,13 +1583,8 @@ class Session(object):
     """
     self._start(obj_tensor, feed_dict)
 
-    alpha = params["alpha"]
-    beta1 = params["beta1"]
-    beta2 = params["beta2"]
-    epsilon = params["epsilon"]
-    t = params["t"]
-    m = params["m"]
-    v = params["v"]   
+    alpha, beta1, beta2 = params["alpha"], params["beta1"], params["beta2"]
+    epsilon, t, m, v = params["epsilon"], params["t"], params["m"], params["v"]
     alpha_t = alpha if t < 1 else alpha * np.sqrt(1 - np.power(beta2, t)) / (1 - np.power(beta1, t))
 
     for tensor in feed_dict.keys():
@@ -1603,8 +1595,7 @@ class Session(object):
       v[tensor] = beta2 * v[tensor] + (1 - beta2) * g * g
       feed_dict[tensor] += -alpha_t * m[tensor] / (np.sqrt(v[tensor]) + epsilon) 
 
-    params["m"] = m
-    params["v"] = v
+    params["m"], params["v"] = m, v
     params["t"] += 1
     self._reset()   
 
