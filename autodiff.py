@@ -5,24 +5,24 @@ class _BaseOp(object):
     following attributes:
 
     sess: `Session`;
-      The session in which the Op is defined
+      The session in which the Op is defined.
     shape: `numpy.ndarray`;
-      1D array, e.g. [2, 3, 3, 2], specifying the shape of the emitted tensor
+      1D array, e.g. [2, 3, 3, 2], specifying the shape of the emitted tensor.
     parent_total: integer;
       Total number of Op's for which the current Op is an argument; this is determined when
-      the data flow graph was defined in the beginning
+      the data flow graph was defined in the beginning.
     parent_acc: integer;
       Initialized to zero; it keeps track of the number of parent Op's that have backpropped
-      gradients to the current Op in an iteration
+      gradients to the current Op in an iteration.
     is_terminal: bool;
-      Initialized to False; indicates if the Op is terminal node (i.e. has no child node)
+      Initialized to False; indicates if the Op is terminal node (i.e. has no child node).
     _cache_data: dict;
-      Caches data that are needed in both forward and backward pass to avoid recomputing;
+      Caches data that are needed in both forward and backward pass to avoid recomputing.
 
     Parameters
     ----------
     sess: `Session`;
-      The session in which the Op is defined
+      The session in which the Op is defined.
   """  
   def __init__(self, sess):
     self.sess = sess
@@ -41,11 +41,11 @@ class _BaseOp(object):
     Parameters
     ----------
     feed_dict: `dict`;
-      dict: {id(`Op`): `numpy.ndarray`}
+      dict: {id(`Op`): `numpy.ndarray`}.
 
     Returns
     -------
-    `numpy.ndarray`; value of the tensor
+    `numpy.ndarray`; value of the tensor.
     """
     if id(self) not in self.sess.values:
       self.sess.values[id(self)] = self._eval_func(feed_dict)
@@ -66,11 +66,11 @@ class _BaseOp(object):
     Parameters
     ----------
     feed_dict: `dict`;
-      dict: {id(`Op`): `numpy.ndarray`}
+      dict: {id(`Op`): `numpy.ndarray`}.
 
     backprop: `numpy.ndarray`;
       Gradient backpropped from a parent Op. Has the SAME shape as the shape of the current Op
-      (i.e. `self.shape`)
+      (i.e. `self.shape`).
     """
     if self.is_terminal and not self.is_variable:
       return
@@ -82,6 +82,10 @@ class _BaseOp(object):
 
     if self.parent_acc == self.parent_total and not self.is_terminal:
         self._grad_func(feed_dict)
+
+  def __repr__(self):
+    """Display the representation with tensor shape."""
+    return super(_BaseOp, self).__repr__()[:-1] + ", shape=" + str(self.shape) + ">"
 
 
 class PlaceholderOp(_BaseOp):
@@ -1033,8 +1037,8 @@ class DropoutOp(_BaseOp):
     `numpy.ndarray`; the n-D array with the same size as `X` containing indicator variables
     """
     if "mask" not in self._cache_data:
-      self._cache_data["mask"] = np.random.rand(*self.shape) >= \
-                                          self.KEEP_PROB.eval(feed_dict)
+      self._cache_data["mask"] = np.random.binomial(1, 1. - self.KEEP_PROB.eval(feed_dict), 
+                                  size=self.shape).astype(np.bool)
     return self._cache_data["mask"]
 
 
@@ -1588,7 +1592,7 @@ class Session(object):
     alpha_t = alpha if t < 1 else alpha * np.sqrt(1 - np.power(beta2, t)) / (1 - np.power(beta1, t))
 
     for tensor in feed_dict.keys():
-      if not tensor.is_variable:
+      if not tensor.is_variable and id(tensor) not in self.gradients:
         continue
       g = self.gradients[id(tensor)]
       m[tensor] = beta1 * m[tensor] + (1 - beta1) * g
