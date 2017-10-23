@@ -4,7 +4,7 @@ from autodiff import *
 
 mnist = input_data.read_data_sets("MNIST_data/", one_hot=True)
 
-batch_size = 10000
+batch_size = 100
 reg = 1e-3
 iterations = 1000
 
@@ -17,12 +17,12 @@ X = PlaceholderOp([batch_size, 784], sess, False)
 Y = PlaceholderOp([batch_size, 10], sess, False)
 W = PlaceholderOp([784, 10], sess)
 B = PlaceholderOp([10], sess)
-S = AddOp(MatMulOp(X, W, sess), BiasBroadcastOp(B, [batch_size, 10], sess), sess)
+S = BiasAddOp(MatMulOp(X, W, sess), B, sess)
 H = ReduceMeanOp(SoftmaxCrossEntropyWithLogitsOp(Y, S, sess), 0, sess)
-F = AddOp(H, ParamRegOp(W, reg, sess), sess)
+F = AddOp(H, L2LossOp(W, reg, sess), sess)
 
 feed_dict = {W: w, B: b}
-params = {"alpha": 1e-3}
+params = {"alpha": 0.5}
 for ii in xrange(iterations):
   batch_xs, batch_ys = mnist.train.next_batch(batch_size)
 
