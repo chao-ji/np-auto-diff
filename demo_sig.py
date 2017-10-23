@@ -33,23 +33,23 @@ X = PlaceholderOp([batch * classes, features], sess, False)
 Y = PlaceholderOp([batch * classes, classes], sess, False)
 W1 = PlaceholderOp([features, hidden], sess)
 B1 = PlaceholderOp([hidden], sess)
-H_RAW = AddOp(MatMulOp(X, W1, sess), BiasBroadcastOp(B1, [batch * classes, hidden], sess), sess)
+H_RAW = BiasAddOp(MatMulOp(X, W1, sess), B1, sess)
 H = SigmoidOp(H_RAW, sess)
 
 W2 = PlaceholderOp([hidden, hidden2], sess)
 B2 = PlaceholderOp([hidden2], sess)
-H2_RAW = AddOp(MatMulOp(H, W2, sess), BiasBroadcastOp(B2, [batch * classes, hidden2], sess), sess)
+H2_RAW = BiasAddOp(MatMulOp(H, W2, sess), B2, sess)
 H2 = SigmoidOp(H2_RAW, sess)
 
 W3 = PlaceholderOp([hidden2, classes], sess)
 B3 = PlaceholderOp([classes], sess)
-S = AddOp(MatMulOp(H2, W3, sess), BiasBroadcastOp(B3, [batch * classes, classes], sess), sess)
+S = BiasAddOp(MatMulOp(H2, W3, sess), B3, sess)
 
 H = ReduceMeanOp(SoftmaxCrossEntropyWithLogitsOp(Y, S, sess), 0, sess)
 
-R_W1 = ParamRegOp(W1, reg, sess)
-R_W2 = ParamRegOp(W2, reg, sess)
-R_W3 = ParamRegOp(W3, reg, sess)
+R_W1 = L2LossOp(W1, reg, sess)
+R_W2 = L2LossOp(W2, reg, sess)
+R_W3 = L2LossOp(W3, reg, sess)
 
 LL = AddOp(AddOp(H, R_W1, sess), AddOp(R_W2, R_W3, sess), sess)
 
