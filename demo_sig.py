@@ -29,20 +29,20 @@ b3 = np.zeros((1, classes))
     
 sess = Session()
 
-X = PlaceholderOp([batch * classes, features], sess, False)
-Y = PlaceholderOp([batch * classes, classes], sess, False)
-W1 = PlaceholderOp([features, hidden], sess)
-B1 = PlaceholderOp([hidden], sess)
+X = PlaceholderOp([batch * classes, features], False, sess)
+Y = PlaceholderOp([batch * classes, classes], False, sess)
+W1 = PlaceholderOp([features, hidden], sess=sess)
+B1 = PlaceholderOp([hidden], sess=sess)
 H_RAW = BiasAddOp(MatMulOp(X, W1, sess), B1, sess)
 H = SigmoidOp(H_RAW, sess)
 
-W2 = PlaceholderOp([hidden, hidden2], sess)
-B2 = PlaceholderOp([hidden2], sess)
+W2 = PlaceholderOp([hidden, hidden2], sess=sess)
+B2 = PlaceholderOp([hidden2], sess=sess)
 H2_RAW = BiasAddOp(MatMulOp(H, W2, sess), B2, sess)
 H2 = SigmoidOp(H2_RAW, sess)
 
-W3 = PlaceholderOp([hidden2, classes], sess)
-B3 = PlaceholderOp([classes], sess)
+W3 = PlaceholderOp([hidden2, classes], sess=sess)
+B3 = PlaceholderOp([classes], sess=sess)
 S = BiasAddOp(MatMulOp(H2, W3, sess), B3, sess)
 
 H = ReduceMeanOp(SoftmaxCrossEntropyWithLogitsOp(Y, S, sess), 0, sess)
