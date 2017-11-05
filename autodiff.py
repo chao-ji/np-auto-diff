@@ -24,7 +24,7 @@ class _BaseOp(object):
     sess: `Session`;
       The session in which the Op is defined.
   """  
-  def __init__(self, sess):
+  def __init__(self, sess=None):
     self.sess = sess
     self.shape = ()
     self.parent_total = 0
@@ -102,7 +102,7 @@ class PlaceholderOp(_BaseOp):
   is_variable: bool;
     Indicates if the placeholder holds trainable parameters or not
   """ 
-  def __init__(self, shape, sess, is_variable=True):
+  def __init__(self, shape, is_variable=True, sess=None):
     super(PlaceholderOp, self).__init__(sess)
     self.is_terminal = True
     self.is_variable = is_variable
@@ -133,7 +133,7 @@ class SigmoidOp(_BaseOp):
   sess: `Session`;
     The session in which the Op is defined
   """
-  def __init__(self, X, sess):
+  def __init__(self, X, sess=None):
     super(SigmoidOp, self).__init__(sess)
     self.shape = X.shape
     self.X = X
@@ -179,7 +179,7 @@ class ReluOp(_BaseOp):
   sess: `Session`;
     The session in which the Op is defined
   """
-  def __init__(self, X, sess):
+  def __init__(self, X, sess=None):
     super(ReluOp, self).__init__(sess)
     self.shape = X.shape
     self.X = X
@@ -228,7 +228,7 @@ class L2LossOp(_BaseOp):
   sess: `Session`;
     The session in which the Op is defined
   """  
-  def __init__(self, W, reg, sess):
+  def __init__(self, W, reg, sess=None):
     super(L2LossOp, self).__init__(sess)
     self.shape = 1, 1
     self.W = W
@@ -277,7 +277,7 @@ class AddOp(_BaseOp):
   sess: `Session`;
     The session in which the Op is defined
   """
-  def __init__(self, X1, X2, sess):
+  def __init__(self, X1, X2, sess=None):
     super(AddOp, self).__init__(sess)
     self.shape = X1.shape
     self.X1 = X1
@@ -325,7 +325,7 @@ class MatMulOp(_BaseOp):
   sess: `Session`;
     The session in which the Op is defined
   """
-  def __init__(self, X1, X2, sess):
+  def __init__(self, X1, X2, sess=None):
     super(MatMulOp, self).__init__(sess)
     self.shape = X1.shape[0], X2.shape[1]
     self.X1 = X1
@@ -390,7 +390,7 @@ class _2dKernelOp(_BaseOp):
   sess: `Session`;
     The session in which the Op is defined
   """
-  def __init__(self, X, fsize, strides, padding, sess):
+  def __init__(self, X, fsize, strides, padding, sess=None):
     super(_2dKernelOp, self).__init__(sess)
     self.X = X
     self.X.parent_total += 1
@@ -445,7 +445,7 @@ class _2dKernelOp(_BaseOp):
     _, in_height_pad, in_width_pad, _ = self._X_shape_pad
     pad_top, pad_bot, pad_left, pad_right = self._padding
 
-    X_pad = np.ones(self._X_shape_pad) * self._pv if hasattr(self, "_pv") \
+    X_pad = np.ones(self._X_shape_pad) * self._pad_value if hasattr(self, "_pad_value") \
             else np.zeros(self._X_shape_pad)
     X_pad[:,
         pad_top : in_height_pad - pad_bot,
@@ -506,7 +506,7 @@ class _2dKernelOp(_BaseOp):
                         stride_width))])
     return img_col_index
 
-  def _X_tensor2patchmat(self, feed_dict):
+  def _X_tensor2patchmat(self, feed_dict, flat_batch=False, in_channels=None):
     """PRE-PROCESSING step that converts input 4D tensor into 2D tensor in the "patch matrix" 
     format.
 
@@ -556,9 +556,15 @@ class _2dKernelOp(_BaseOp):
     filter_height, filter_width = self.fsize
     batch = self.X.shape[0]
 
-    self._cache_data["X_val_mat"] = np.vstack([X_val[:, h:h+filter_height, w:w+filter_width, :]
-                                      .transpose(0, 3, 1, 2).reshape((batch, -1))
-                                      for h, w, _, _ in self._img_col_index_val])
+    X_val_mat = np.vstack([X_val[:, h:h+filter_height, w:w+filter_width, :]
+                          .transpose(0, 3, 1, 2).reshape((batch, -1))
+                          for h, w, _, _ in self._img_col_index_val])
+    if flat_batch and in_channels is not None:
+      out_height, out_width = self._out_height, self._out_width
+      X_val_mat = X_val_mat.reshape((out_height, out_width, -1, in_channels, filter_height, 
+                    filter_width)).reshape((-1, filter_height * filter_width))
+
+    self._cache_data["X_val_mat"] = X_val_mat
     return self._cache_data["X_val_mat"]
 
   def _dX_patchmat2tensor(self, dX_val_mat):
@@ -586,10 +592,10 @@ class _2dKernelOp(_BaseOp):
     `numpy.ndarray`; 4D tensor, of dimensions [batch, in_height, in_width, in_channels]
     """
     filter_height, filter_width = self.fsize
-    batch, out_height, out_width, _ = self.shape
+    out_height, out_width, = self._out_height, self._out_width
     in_channels = self.X.shape[3]
 
-    dX_val_tmp = dX_val_mat.reshape((out_height, out_width, batch, in_channels, filter_height,\
+    dX_val_tmp = dX_val_mat.reshape((out_height, out_width, -1, in_channels, filter_height,\
                   filter_width)).transpose(0, 1, 2, 4, 5, 3)
     dX_val = np.zeros(self._X_shape_pad)
     for h, w, h_idx, w_idx in self._img_col_index_val:
@@ -599,7 +605,7 @@ class _2dKernelOp(_BaseOp):
 
 
 class Conv2dOp(_2dKernelOp):
-  def __init__(self, X, W, strides, padding, sess):
+  def __init__(self, X, W, strides, padding, sess=None):
     """Op that performs 2D convolution between a 4D input tensor `X` and a 4D filter tensor `W`.
 
     Parameters
@@ -732,7 +738,7 @@ class Conv2dOp(_2dKernelOp):
 
 
 class MaxPool2dOp(_2dKernelOp):
-  def __init__(self, X, fsize, strides, padding, sess):
+  def __init__(self, X, fsize, strides, padding, sess=None):
     """Op that performs 2D max-pooling on a 4D tensor.
 
     Parameters
@@ -750,6 +756,7 @@ class MaxPool2dOp(_2dKernelOp):
     """
     super(MaxPool2dOp, self).__init__(X, fsize, strides, padding, sess)
     self.shape = X.shape[0], self._out_height, self._out_width, X.shape[3]
+    self._pad_value = np.nan
 
   def _eval_func(self, feed_dict):
     """Function that outputs the value of the tensor.
@@ -764,7 +771,7 @@ class MaxPool2dOp(_2dKernelOp):
     `numpy.ndarray`; 4D tensor, the output of MaxPool(X)
     """  
     batch, out_height, out_width, in_channels = self.shape
-    X_val_mat = self._X_tensor2patchmat(feed_dict)
+    X_val_mat = self._X_tensor2patchmat(feed_dict, flat_batch=True, in_channels=in_channels)
     _argmax = self._argmax(X_val_mat)
     P_val = X_val_mat[np.arange(X_val_mat.shape[0]), _argmax].\
               reshape((out_height, out_width, batch, in_channels)).\
@@ -795,7 +802,7 @@ class MaxPool2dOp(_2dKernelOp):
     filter_height, filter_width = self.fsize
     batch, out_height, out_width, in_channels = self.shape
 
-    X_val_mat = self._X_tensor2patchmat(feed_dict)
+    X_val_mat = self._X_tensor2patchmat(feed_dict, flat_batch=True, in_channels=in_channels)
     _argmax = self._argmax(X_val_mat)
     ind_mat = np.zeros_like(X_val_mat)
     ind_mat[np.arange(ind_mat.shape[0]), _argmax] = 1
@@ -809,30 +816,6 @@ class MaxPool2dOp(_2dKernelOp):
     dX_val = self._dX_patchmat2tensor(dX_val_mat)
     self.X.grad(feed_dict, dX_val)
 
-  def _X_tensor2patchmat(self, feed_dict):
-    """PRE-PROCESSING step that converts input 4D tensor into 2D tensor in "patch matrix" format.
-
-    The patch matrix is 2D array of dimensions in 
-      [out_height * out_width * batch * in_channels, filter_height * filter_width]
-
-    Parameters
-    ----------
-    feed_dict: `dict`;
-      dict: {id(`Op`): `numpy.ndarray`}
-
-    Returns
-    -------
-    X_val_mat: `numpy.ndarray`
-      The output 2D tensor
-    """
-    batch, out_height, out_width, in_channels = self.shape
-    filter_height, filter_width = self.fsize
-    self._pv = np.finfo(self.sess.dtype).min # self._pv = np.finfo(feed_dict[self.X].dtype).min
-    X_val_mat = super(MaxPool2dOp, self)._X_tensor2patchmat(feed_dict).\
-                reshape((out_height, out_width, batch, in_channels, filter_height, filter_width)).\
-                reshape((-1, filter_height * filter_width))
-    return X_val_mat
-
   def _argmax(self, X_val_mat):
     """Compute the indexes of the largest element of each flattened image patch per depth (channel) 
     of length `filter_height` * `filter_width`.
@@ -844,8 +827,68 @@ class MaxPool2dOp(_2dKernelOp):
                                 filter_height * filter_width]
     """
     if "argmax" not in self._cache_data:
-      self._cache_data["argmax"] = X_val_mat.argmax(axis=1)
+      self._cache_data["argmax"] = np.nanargmax(X_val_mat, axis=1)
     return self._cache_data["argmax"]
+
+
+class AvgPool2dOp(_2dKernelOp):
+  def __init__(self, X, fsize, strides, padding, sess=None):
+    super(AvgPool2dOp, self).__init__(X, fsize, strides, padding, sess)
+    self.shape = X.shape[0], self._out_height, self._out_width, X.shape[3]
+    self._pad_value = np.nan
+
+  def _eval_func(self, feed_dict):
+    batch, out_height, out_width, in_channels = self.shape
+    X_val_mat = self._X_tensor2patchmat(feed_dict, flat_batch=True, in_channels=in_channels)
+    X_val_mat = np.nanmean(X_val_mat, axis=1)
+    P_val = X_val_mat.reshape((out_height, out_width, batch, in_channels)).transpose(2, 0, 1, 3)
+    return P_val
+
+  def _grad_func(self, feed_dict):
+    filter_height, filter_width = self.fsize
+    batch, out_height, out_width, in_channels = self.shape
+
+    X_val_mat = self._X_tensor2patchmat(feed_dict, flat_batch=True, in_channels=in_channels)
+    div = np.logical_not(np.isnan(X_val_mat)).astype(np.float).sum(axis=1, keepdims=True)
+    ind_mat = np.ones_like(X_val_mat) / div
+
+    grad_val = self.sess.gradients[id(self)]
+    grad_val_mat = np.tile(grad_val.transpose(1, 2, 0, 3).reshape((-1, 1)), (1, ind_mat.shape[1]))
+
+    dX_val_mat = ind_mat * grad_val_mat
+    dX_val_mat = dX_val_mat.reshape((out_height * out_width * batch, in_channels * filter_height *
+                  filter_width))
+    dX_val = self._dX_patchmat2tensor(dX_val_mat)
+    self.X.grad(feed_dict, dX_val)
+
+
+class PadOp(_BaseOp):
+  def __init__(self, X, paddings, constant_value=0, sess=None):
+    super(PadOp, self).__init__(sess)
+    self.shape = self._shape(X, paddings) 
+    self.X = X
+    self.paddings = paddings
+    self.constant_value = constant_value
+    self._slice = self._slice(self.X, self.paddings)
+
+  def _eval_func(self, feed_dict):
+    X_val = self.X.eval(feed_dict)
+    Pad_val = np.ones(self.shape) * self.constant_value
+    Pad_val[self._slice] = X_val
+    return Pad_val
+
+  def _grad_func(self, feed_dict):
+    grad_val = self.sess.gradients[id(self)]
+    dX_val = grad_val[self._slice] 
+    self.X.grad(feed_dict, dX_val)
+
+  def _shape(self, X, paddings):
+    _shape = tuple(np.sum(paddings, axis=1) + X.shape)
+    return _shape
+
+  def _slice(self, X, paddings):
+    _slice = [slice(p[0], p[0] + i) for p, i in zip(paddings, X.shape)]
+    return _slice
 
 
 class BiasAddOp(_BaseOp):
@@ -880,7 +923,7 @@ class BiasAddOp(_BaseOp):
   sess: `Session`;
     The session in which the Op is defined 
   """
-  def __init__(self, X, B, sess):
+  def __init__(self, X, B, sess=None):
     if len(B.shape) != 1 or X.shape[-1] != B.shape[0]:
       raise ValueError("`B` must be a 1D array with length matching the last dim of `X`.\
                         B.shape[0]: %d, X.shape[-1]: %d" % (B.shape[0], X.shape[-1]))
@@ -933,7 +976,7 @@ class ReshapeOp(_BaseOp):
   sess: `Session`;
     The session that the Op is associated with  
   """
-  def __init__(self, X, shape, sess):
+  def __init__(self, X, shape, sess=None):
     super(ReshapeOp, self).__init__(sess)
     self.shape = shape
     self.X = X
@@ -983,7 +1026,7 @@ class DropoutOp(_BaseOp):
   sess: `Session`;
     The session that the Op is associated with
   """
-  def __init__(self, X, KEEP_PROB, sess):
+  def __init__(self, X, KEEP_PROB, sess=None):
     super(DropoutOp, self).__init__(sess)
     self.shape = X.shape
     self.X = X
@@ -1058,7 +1101,7 @@ class SoftmaxCrossEntropyWithLogitsOp(_BaseOp):
   sess: `Session`;
     The session that the Op is associated with
   """
-  def __init__(self, labels, logits, sess):
+  def __init__(self, labels, logits, sess=None):
     super(SoftmaxCrossEntropyWithLogitsOp, self).__init__(sess)
     self.shape = (logits.shape[0],)
     self.labels = labels
@@ -1130,7 +1173,7 @@ class ReduceMeanOp(_BaseOp):
   sess: `Session`;
     The session that the Op is associated with 
   """
-  def __init__(self, X, axis, sess):
+  def __init__(self, X, axis, sess=None):
     super(ReduceMeanOp, self).__init__(sess)
     self.shape = X.shape[:axis] + X.shape[axis + 1:]
     self.X = X
@@ -1179,7 +1222,7 @@ class ReduceSumOp(_BaseOp):
   sess: `Session`;
     The session that the Op is associated with 
   """
-  def __init__(self, X, axis, sess):
+  def __init__(self, X, axis, sess=None):
     super(ReduceSumOp, self).__init__(sess)
     self.shape = X.shape[:axis] + X.shape[axis + 1:]
     self.X = X
@@ -1234,7 +1277,7 @@ class LRNOp(_BaseOp):
   beta: float, defaults to .5;
     Exponent
   """
-  def __init__(self, X, depth_radius, bias, alpha, beta, sess):
+  def __init__(self, X, depth_radius, bias, alpha, beta, sess=None):
     super(LRNOp, self).__init__(sess)
     self.shape = X.shape
     self.X = X
@@ -1340,7 +1383,7 @@ class MomentsOp(_BaseOp):
   sess: `Session`;
     The session that the Op is associated with 
   """
-  def __init__(self, X, axes_drop, sess):
+  def __init__(self, X, axes_drop, sess=None):
     super(MomentsOp, self).__init__(sess)
     self._axes_keep = [i for i in xrange(len(X.shape)) if i not in axes_drop]
     self._shape_keep = [X.shape[i] for i in self._axes_keep]
@@ -1408,7 +1451,7 @@ class BatchNormOp(_BaseOp):
   sess: `Session`;
     The session that the Op is associated with 
   """
-  def __init__(self, X, mean_var, offset, scale, epsilon, sess):
+  def __init__(self, X, mean_var, offset, scale, epsilon, sess=None):
     super(BatchNormOp, self).__init__(sess)
     _indexes = np.arange(len(X.shape))
     self.axes_drop = list(_indexes[np.array(X.shape) != np.array(offset.shape)])
