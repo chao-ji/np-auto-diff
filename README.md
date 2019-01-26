@@ -1,6 +1,6 @@
 # Experimental Numpy based framework for Automatic Differentiation
 
-[Automatic differentiation](http://colah.github.io/posts/2015-08-Backprop/) refers to a set of algorithmic techniques for numerically computing the derivative of a function. The function is usually represented as a computational graph formed by a collection of nodes. Each node corresponds to an intermediate variable whose value "flows" to the final outcome. A node holds two pieces of data -- the variable's value and its derivative. To compute the derivatives, the intermediate values are first evaluated in the direction of "data flowing", a process called **forward pass**, which is a precondition for the **backward pass** where the derivatives are computed in the opposite direction of data flowing.
+[Automatic differentiation](http://colah.github.io/posts/2015-08-Backprop/) refers to a set of algorithmic techniques for numerically computing the derivative of a function. The function is usually represented as a computational graph formed by a collection of nodes. Each node corresponds to an intermediate variable whose value "flows" to the final outcome. A node holds two pieces of data -- the variable's value and its derivative. To compute the derivatives, the intermediate values are first evaluated in the direction of "data flowing", a process called **forward pass**, which is the precondition for the **backward pass** where the derivatives are computed in the opposite direction of data flowing.
 
 
 This is a NumPy based framework that provides Python program interfaces for defining the computational graph and mechnisms for running the forward and backward pass to compute the derivatives. The computational graph can be built by connecting nodes using basic arithmetic operations, tensor transformation operations, and common neural network layers. The actual computation of the intermediate values and derivatives is handled by NumPy. 
@@ -62,6 +62,7 @@ with graph.as_default_graph():
 
 default_graph = ad.get_default_graph()
 
+assert a.graph == graph
 assert a.graph != default_graph
 ```
 
@@ -105,9 +106,9 @@ OUTPUT
 
 In the example above, `a` and `b` are `Placeholder` objects whose value must be supplied by a `feed_dict`, a Python `dict` that maps a `Node` to numeric value convertable to NumPy array.
 
-`forward` starts off a **forward pass** -- `c.forward(feed_dict)` returns the value of `c`, and has the side effect of computing the intermediate values that flow to `c` (i.e. the values of `a` and `b`).
+`forward` starts off the **forward pass** -- `c.forward(feed_dict)` returns the value of `c`, and has the side effect of computing the intermediate values that flow to `c` (i.e. the values of `a` and `b`).
 
-Similarly `backward` starts off a **backward pass**. However, `c.backward(feed_dict)` does not return a value, but only has the side effect of backpropagating gradient/derivative to all nodes whose value flow to `c`. You can pass an array holding the gradient/derivative to be backpropped as the second argument to `backward`, or you can optionally leave it out and it will default to an all-one array.
+Similarly `backward` starts off the **backward pass**. However, `c.backward(feed_dict)` does not return a value, but only has the side effect of backpropagating gradient/derivative to all nodes whose value flow to `c`. You can pass an array holding the gradient/derivative to be backpropped as the second argument `bwval=`to `backward`, or you can optionally leave it out and it will default to an all-one array.
 
 ##### Shape
 ```python
@@ -123,7 +124,7 @@ A `TensorShape` object stores the *static shape* of a node, and it represents th
 
 In the example above, the `Placeholder` object `a` takes the first argument as the shape, and its first entry is left as `None`, which means it is a wildcard that matches any non-negative integer.
 
-Note the static shape must match a *dynamic shape* (i.e. the actual shape of an NumPy array embodies by a node).
+Note the static shape must match a *dynamic shape* (i.e. the actual shape of an NumPy array embodied by a node).
 
 ##### Arithmetic operations
 ```python
@@ -135,7 +136,7 @@ c = [3., 4., 5.] * a
 ```
 You can define a `Graph` using arithmetic functions like `add()` or `multiply()`. Alternatively, you can simply use Python arithmetic operators `+` or `*`, which is shorthand for `add()` and `multiply()`.
 
-Note the arithmetic operations allows for the NumPy style [broadcasting](https://docs.scipy.org/doc/numpy-1.15.0/user/basics.broadcasting.html), and the second non-`Node` argument is implicitly converted to a `Constant` type of `Node`.
+Note the arithmetic operations allow for the NumPy style [broadcasting](https://docs.scipy.org/doc/numpy-1.15.0/user/basics.broadcasting.html), and the other non-`Node` argument is implicitly converted to a `Constant` type of `Node` and added to the graph.
 
 ### Demos
 
@@ -149,4 +150,6 @@ The above code snippets only cover the essential mechanics to create and execute
 
 ### Extension
 
+Currently only a minimal set of `Node` classes have been implemented (e.g. `Add`, `Multiply`, `Reshape`, `Conv2D`, `FusedBatchNorm`),
 
+ and additional `Node` types will be added later. To add new `Node` types, you need to subclass from the `Node` class in this file [base_node.py](core/base_node.py), and override the abstract classes `_forward()` and `_backward()`.  
