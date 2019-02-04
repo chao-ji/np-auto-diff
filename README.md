@@ -1,6 +1,6 @@
 # Experimental Numpy based framework for Automatic Differentiation
 
-[Automatic differentiation](http://colah.github.io/posts/2015-08-Backprop/) refers to a set of algorithmic techniques for numerically computing the derivative of a function. The function is usually represented as a computational graph formed by a collection of nodes. Each node corresponds to an intermediate variable whose value "flows" to the final outcome. A node holds two pieces of data -- the variable's value and its derivative. To compute the derivatives, the intermediate values are first evaluated in the direction of "data flowing", a process called **forward pass**, which is the precondition for the **backward pass** where the derivatives are computed in the opposite direction of data flowing.
+[Automatic differentiation](http://colah.github.io/posts/2015-08-Backprop/) refers to a set of algorithmic techniques for numerically computing the derivative of a function. The function is usually represented as a computational graph formed by a collection of nodes. Each node corresponds to an intermediate variable whose value "flows" to the final outcome. A node holds two pieces of data -- the variable's value and its derivative. To compute the derivatives, the intermediate values are first evaluated in the direction of "data flowing", a process called **forward pass**, providing results needed for the **backward pass** where the derivatives are computed in the opposite direction of data flowing.
 
 
 This is a NumPy based framework that provides Python program interfaces for defining the computational graph and mechnisms for running the forward and backward pass to compute the derivatives. The computational graph can be built by connecting nodes using basic arithmetic operations, tensor transformation operations, and common neural network layers. The actual computation of the intermediate values and derivatives is handled by NumPy. 
@@ -147,9 +147,6 @@ The above code snippets only cover the essential mechanics to create and execute
 * [Batch Normalization](demos/batch_norm.ipynb)
 * [Conv Net](demos/conv_net.ipynb)
 
-
 ### Extension
 
-Currently only a minimal set of `Node` classes have been implemented (e.g. `Add`, `Multiply`, `Reshape`, `Conv2D`, `FusedBatchNorm`),
-
- and additional `Node` types will be added later. To add new `Node` types, you need to subclass from the `Node` class in this file [base_node.py](core/base_node.py), and override the abstract classes `_forward()` and `_backward()`. Check [this guide](g3doc/forward_backward.md) for more details. 
+Currently only a minimal set of `Node` classes have been implemented (e.g. `Add`, `Multiply`, `Reshape`, `Conv2D`, `FusedBatchNorm`), and additional `Node` types will be added later. To add new `Node` types, you need to subclass from the `Node` class in this file [base_node.py](core/base_node.py), and override the abstract methods `_forward()` and `_backward()`. Check [this guide](g3doc/forward_backward.md) for more details. 
