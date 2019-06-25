@@ -130,7 +130,7 @@ Note the static shape must match a *dynamic shape* (i.e. the actual shape of an 
 ```python
 import autodiff as ad
 
-a = ad.placeholder((1., 2., 3.))
+a = ad.placeholder((2, 3))
 b = a + [[1., 2., 3.], [4., 5., 6.]]
 c = [3., 4., 5.] * a
 ```
