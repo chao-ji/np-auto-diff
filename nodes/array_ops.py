@@ -315,3 +315,10 @@ class Pad(base_node.Node):
       mask = tuple([slice(p[0], p[0] + i) for p, i in zip(paddings, x_shape)])
       self._graph.get_runtime()._cache_data[self.name]['mask'] = mask
     return self._graph.get_runtime()._cache_data[self.name]['mask']
+
+
+class Concat(base_node.Node):
+  def __init__(self, tensors, axis=0, graph=None):
+    pass
+
+

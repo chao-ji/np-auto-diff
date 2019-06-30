@@ -99,6 +99,7 @@ class GradientDescentOptimizer(Optimizer):
 
 
 class AdamOptimizer(Optimizer):
+  """Adam optimizer"""
   def __init__(self, **params):
     """Constructor.
 
@@ -114,11 +115,23 @@ class AdamOptimizer(Optimizer):
     self._v = None
 
   def _initialize_moments(self, grads_and_vars):
+    """Initializer the moments of variables as zero-valued tensors.
+
+    Args:
+      grads_and_vars: a list of (gradient, variable) pairs, where gradient is
+        numpy array, and variable is a Node instance.
+    """
     moments = dict([(var.name, np.zeros(var.shape._raw_shape)) 
         for _, var in grads_and_vars])
     return moments
 
   def apply_gradients(self, grads_and_vars):
+    """Apply the computed gradient w.r.t. trainable variables.
+
+    Args:
+      grads_and_vars: a list of (gradient, variable) pairs, where gradient is
+        numpy array, and variable is a Node instance.
+    """
     alpha, beta1, beta2, epsilon = (self._params['alpha'], 
                                     self._params['beta1'], 
                                     self._params['beta2'], 
@@ -143,6 +156,15 @@ class AdamOptimizer(Optimizer):
     self._t += 1
 
   def optimize(self, objective, feed_dict):
+    """Optimize the objective by chaining `compute_gradients()` and 
+    `apply_gradients()`.
+
+    Call this function if no gradient postprocessing (e.g. scaling, clipping) 
+    is needed.
+
+    Args:
+      objective: a Node instance, the objective to be minimized.
+      feed_dict: a dict mapping from a `Node` instance to a numpy array.
+    """
     grads_and_vars = self.compute_gradients(objective, feed_dict)
     self.apply_gradients(grads_and_vars)
-    

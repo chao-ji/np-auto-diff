@@ -80,6 +80,9 @@ class Graph(object):
 
     Args:
       only_trainable: bool scalar, whether to include trainable variables only.
+
+    Returns:
+      a list of Node instances represeting variables.
     """
     if only_trainable:
       return list(filter(lambda node: is_variable(node) and
@@ -193,6 +196,14 @@ class RunTime(object):
     self._backprop_count = collections.defaultdict(int)
 
   def get_bwval(self, name):
+    """Get the backward pass value of the node.
+
+    Args:
+      name: string scalar, name of the Node instance representing a variable.
+
+    Returns:
+      the backward pass value (i.e. gradient) of the node. 
+    """
     if name not in self._bwval:
       raise ValueError('node \'%s\' not in bwval' % name)
     return self._bwval[name]

@@ -79,6 +79,64 @@ def conv2d_case(batch,
   return c_val, ct_val, dx_val, dxt_val, dk_val, dkt_val
 
 
+def conv2d_transpose_case(batch,
+                          input_size,
+                          kernel_size,
+                          in_channels,
+                          out_channels,
+                          strides,
+                          padding):
+  if padding == 'SAME':
+    output_height = input_size[0] * strides[0]
+    output_width = input_size[1] * strides[1]
+  elif padding == 'VALID':
+    output_height = input_size[0] * strides[0] + max(
+        kernel_size[0] - strides[0], 0)
+    output_width = input_size[1] * strides[1] + max(
+        kernel_size[1] - strides[1], 0)
+
+  xv = np.random.randint(-3, 3, size=(batch,) + input_size + (out_channels,)
+      ).astype(np.float32)
+  kv = np.random.randint(-3, 3,
+      size=kernel_size + (in_channels,) + (out_channels,)).astype(np.float32)
+  # tf
+  xt = tf.convert_to_tensor(xv)
+  kt = tf.convert_to_tensor(kv)
+  ct = tf.nn.conv2d_transpose(
+      xt,
+      kt,
+      (batch,) + (output_height, output_width) + (in_channels,),
+      (1,) + strides + (1,), 
+      padding)
+
+  gv = np.random.randint(-3, 3, size=ct.shape).astype(np.float32) 
+  gt = tf.convert_to_tensor(gv)
+  grads = tf.gradients(ct, [xt, kt], gt)
+
+  ct_val = ct.eval()
+  dxt_val = grads[0].eval()
+  dkt_val = grads[1].eval()
+  # autodiff
+  graph = ad.Graph()
+  rt = ad.RunTime()
+  graph.set_runtime(rt) 
+
+  with graph.as_default_graph():
+    x = ad.placeholder((batch,) + input_size + (out_channels,))
+    k = ad.placeholder(kernel_size + (in_channels,) + (out_channels,))
+    c = ad.conv2d_transpose(x, k, strides, padding)
+
+  feed_dict = {x: xv, k: kv}
+  with rt.forward_backward_cycle():
+    c.backward(feed_dict, gv)
+
+    c_val = rt._fwval[c.name]
+    dx_val = rt._bwval[x.name]
+    dk_val = rt._bwval[k.name]
+
+  return c_val, ct_val, dx_val, dxt_val, dk_val, dkt_val    
+
+
 def maxpool2d_case(batch, 
                    input_size, 
                    kernel_size, 
@@ -184,6 +242,33 @@ def relu_case(shape):
   return rl_val, rlt_val, da_val, dat_val
 
 
+def leaky_relu_case(shape, alpha):
+  av = np.random.randint(-5, 5, size=shape).astype(np.float32)
+  # tf
+  at = tf.convert_to_tensor(av)
+  rlt = tf.nn.leaky_relu(at, alpha)
+  gv = np.random.randint(-5, 5, size=shape).astype(np.float32)
+  grads = tf.gradients(rlt, [at], gv)
+  rlt_val = rlt.eval()
+  dat_val = grads[0].eval()
+  # autodiff
+  graph = ad.Graph()
+  rt = ad.RunTime()
+  graph.set_runtime(rt)
+
+  with graph.as_default_graph():
+    a = ad.placeholder(shape)
+    rl = ad.leaky_relu(a, alpha)
+
+  feed_dict = {a: av}
+  with rt.forward_backward_cycle():
+    rl.backward(feed_dict, gv)
+    rl_val = rt._fwval[rl.name]
+    da_val = rt._bwval[a.name]
+  
+  return rl_val, rlt_val, da_val, dat_val
+
+ 
 class TestKernel2DOps(unittest.TestCase):
   def _get_combos(self):
     lists = [BATCH, INPUT_SIZE, KERNEL_SIZE, IN_CHANNELS, 
@@ -217,6 +302,19 @@ class TestKernel2DOps(unittest.TestCase):
       self.assertTrue((dk_val == dkt_val).all())
     sess.close()
 
+  def test_conv2d_transpose(self):
+    print('\nTesting Conv2dTranspose...')
+    sess = tf.InteractiveSession()
+    combos = self._get_combos()
+    for i, combo in enumerate(combos):
+      self._print_parameters(combo, i)
+      c_val, ct_val, dx_val, dxt_val, dk_val, dkt_val = conv2d_transpose_case(
+          *combo)
+      self.assertTrue((c_val == ct_val).all())
+      self.assertTrue((dx_val == dxt_val).all())
+      self.assertTrue((dk_val == dkt_val).all())
+    sess.close()  
+
   def test_maxpool2d(self):
     print('\nTesting MaxPool2D...')
     sess = tf.InteractiveSession()
@@ -244,8 +342,9 @@ class TestReLU(unittest.TestCase):
   def _get_shapes(self):
     return [(), (1,), (2,), (1, 1), (2, 1), (2, 4, 9, 5)]
 
-  def _print_parameters(self, shape):
-    print('shape', shape, '\n')
+  def _print_parameters(self, shape, alpha=None):
+    print('shape', shape)
+    print('alpha', alpha, '\n')
 
   def test_relu(self):
     print('\nTesting ReLU...')
@@ -257,6 +356,19 @@ class TestReLU(unittest.TestCase):
       self.assertTrue((rl_val == rlt_val).all())  
       self.assertTrue((da_val == dat_val).all())
     sess.close()
+
+  def test_leaky_relu(self):
+    print('\nTesting LeakyReLU...')
+    sess = tf.InteractiveSession()
+    shapes = self._get_shapes()
+    alphas = [0.0, 0.5, 1.0]
+    for shape in shapes:
+      for alpha in alphas:
+        self._print_parameters(shape, alpha)
+        rl_val, rlt_val, da_val, dat_val = leaky_relu_case(shape, alpha)
+        self.assertTrue((rl_val == rlt_val).all())
+        self.assertTrue((da_val == dat_val).all())
+    sess.close()    
 
 
 if __name__ == '__main__':

@@ -66,6 +66,45 @@ class Sigmoid(base_node.Node):
     self._arguments['x'].backward(feed_dict, dx_val)
 
 
+class Tanh(base_node.Node):
+  """Compute elementwise tanh of input tensor."""
+  def __init__(self, x, graph=None):
+    """Constructor.
+
+    Args:
+      x: a Node instance, the input tensor whose elementwise sigmiod is to be 
+        computed.
+      graph: a Graph instance.
+    """
+    super(Tanh, self).__init__(x._shape, graph)
+    self._arguments['x'] = x
+    self.increment_num_consumers_for_arguments()
+
+  def _forward(self, feed_dict):
+    """Compute the forward pass value of the node.
+
+    Args: 
+      feed_dict: a dict mapping from a `Node` instance to a numpy array.
+
+    Returns:
+      the forward pass value of the node.
+    """
+    x_val = self._arguments['x'].forward(feed_dict)
+    return np.tanh(x_val)
+
+  def _backward(self, feed_dict):
+    """Retrieve the gradient value of the current node. Then compute and 
+    backprop the gradient w.r.t. the argument nodes of the current node.
+
+    Args: 
+      feed_dict: a dict mapping from a `Node` instance to a numpy array.
+    """
+    val = self.forward(feed_dict)
+    grad_val = self._graph.get_runtime()._bwval[self.name]
+    grad_val = grad_val * (1 - val * val)
+    self._arguments['x'].backward(feed_dict, grad_val)
+
+
 class ReLU(base_node.Node):
   """Compute elementwise ReLU of input tensor."""
   def __init__(self, x, graph=None):
@@ -102,6 +141,47 @@ class ReLU(base_node.Node):
     x_val = self._arguments['x'].forward(feed_dict)
     grad_val = self._graph.get_runtime()._bwval[self.name]
     grad_val[x_val <= 0] = 0
+    self._arguments['x'].backward(feed_dict, grad_val)
+
+
+class LeakyReLU(base_node.Node):
+  """Compute elementwise Leaky ReLU of input tensor."""
+  def __init__(self, x, alpha=0.3, graph=None):
+    """Constructor.
+
+    Args:
+      x: a Node instance, the input tensor whose elementwise ReLU is to be 
+        computed.
+      alpha: float scalar, slope of the activation function for x < 0. 
+      graph: a Graph instance.
+    """
+    super(LeakyReLU, self).__init__(x._shape, graph)
+    self._arguments['x'] = x
+    self._alpha = alpha
+    self.increment_num_consumers_for_arguments()
+
+  def _forward(self, feed_dict):
+    """Compute the forward pass value of the node.
+
+    Args: 
+      feed_dict: a dict mapping from a `Node` instance to a numpy array.
+
+    Returns:
+      the forward pass value of the node.
+    """
+    x_val = self._arguments['x'].forward(feed_dict)
+    return np.where(x_val >= 0, x_val, x_val * self._alpha)
+
+  def _backward(self, feed_dict):
+    """Retrieve the gradient value of the current node. Then compute and 
+    backprop the gradient w.r.t. the argument nodes of the current node.
+
+    Args: 
+      feed_dict: a dict mapping from a `Node` instance to a numpy array.
+    """
+    x_val = self._arguments['x'].forward(feed_dict)
+    grad_val = self._graph.get_runtime()._bwval[self.name]
+    grad_val = np.where(x_val <= 0, self._alpha * grad_val, grad_val)
     self._arguments['x'].backward(feed_dict, grad_val)
 
 
@@ -367,7 +447,7 @@ class _Kernel2D(base_node.Node):
     Args:
       shape: a list (or tuple) of 4 integers (or None), the shape of the 
         resulting tensor.
-      strides: a list of tuple or two ints, the stride in the height and width
+      strides: a list (or tuple) of two ints, the stride in the height and width
         dimension. 
       padding: string scalar, the padding scheme ('SAME' or 'VALID').
       graph: a Graph instance.
@@ -501,7 +581,7 @@ class _Kernel2D(base_node.Node):
         pad_left: in_width_pad - pad_right, :] = x_val
     return x_pad_val
 
-  def _unpad_dx(self, dx_val, x_val, kernel_height, kernel_width):
+  def _unpad_dx(self, dx_val, x_val_shape, kernel_height, kernel_width):
     """Unpad the padded tensor to its original shape.
 
     The padded gradient value `dx_val` will be unpadded to the original shape of
@@ -509,7 +589,8 @@ class _Kernel2D(base_node.Node):
 
     Args:
       dx_val: 4-D numpy array, the gradient w.r.t to the padded input tensor. 
-      x_val: 4-D numpy array, the forward pass value of the input tensor.
+      x_val_shape: a tuple of 4 ints, holding the dynamic shape 
+        [batch, height, width, depth] of the input tensor.
       kernel_height: int scalar, height of the kernel.
       kernel_width: int scalar, width of the kernel.
 
@@ -517,7 +598,7 @@ class _Kernel2D(base_node.Node):
       dx_val: 4-D numpy array, the unpadded gradient w.r.t. the input tensor.
     """
     _, _, padding, x_pad_shape = self._get_shapes(
-        x_val.shape, kernel_height, kernel_width)
+        x_val_shape, kernel_height, kernel_width)
     _, in_height_pad, in_width_pad, _ = x_pad_shape
     pad_top, pad_bot, pad_left, pad_right = padding
 
@@ -611,14 +692,15 @@ class _Kernel2D(base_node.Node):
       self._graph.get_runtime()._cache_data[self.name]['x_val_mat'] = x_val_mat
     return self._graph.get_runtime()._cache_data[self.name]['x_val_mat']  
 
-  def _dx_patchmat2tensor(self, dx_val_mat, x_val, kernel_height, kernel_width):
+  def _dx_patchmat2tensor(self, dx_val_mat, x_val_shape, kernel_height, kernel_width):
     """A post-processing step that converts the gradient w.r.t. the "patch 
     matrix" back to a 4-D numpy array of the same shape as input tensor.
 
     Args:
       dx_val_mat: a 2-D numpy array, holding the gradient w.r.t. the "patch 
         matrix".
-      x_val: 4-D numpy array, the forward pass value of the input tensor.
+      x_val_shape: a tuple of 4 ints, holding the dynamic shape 
+        [batch, height, width, depth] of the input tensor. 
       kernel_height: int scalar, height of the kernel.
       kernel_width: int scalar, width of the kernel.
 
@@ -627,10 +709,10 @@ class _Kernel2D(base_node.Node):
         , the gradient w.r.t. the input tensor.
     """
     out_height, out_width, _, x_pad_shape = self._get_shapes(
-        x_val.shape, kernel_height, kernel_width) 
-    in_channels = x_val.shape[3]
+        x_val_shape, kernel_height, kernel_width)
+    in_channels = x_val_shape[3]
     img_col_index_val = self._get_img_col_index(
-        x_val.shape, kernel_height, kernel_width)
+        x_val_shape, kernel_height, kernel_width)
 
     dx_val_tmp = dx_val_mat.reshape((
         out_height, out_width, -1, in_channels, kernel_height, kernel_width
@@ -640,7 +722,7 @@ class _Kernel2D(base_node.Node):
     for h, w, h_index, w_index in img_col_index_val:
       dx_val[:, h:h+kernel_height, w:w+kernel_width, :] += dx_val_tmp[
           h_index, w_index]
-    dx_val = self._unpad_dx(dx_val, x_val, kernel_height, kernel_width)
+    dx_val = self._unpad_dx(dx_val, x_val_shape, kernel_height, kernel_width)
     return dx_val
 
   def _compute_static_spatial_dim_size(
@@ -686,9 +768,10 @@ class _Kernel2D(base_node.Node):
     if kernel is not None:
       if kernel._shape._ndims != 4:
         raise ValueError('kernel in conv2d must be a 4-D tensor.')
-      if not x._shape[3:].compatible_with(kernel._shape[2:3]):
-        raise ValueError('input_depth must be compatible: x.shape[3] = %s, '
-            'kernel.shape[2] = %s' % (x._shape[3], kernel._shape[2]))
+      dim = self.input_channels_dim
+      if not x._shape[3:].compatible_with(kernel._shape[dim:dim+1]):
+        raise ValueError('input channels must be compatible: x.shape[3] = %s, '
+            'kernel.shape[%d] = %s' % (x._shape[3], dim, kernel._shape[dim]))
     if not isinstance(strides, (list, tuple)):
       raise TypeError('strides must be of instance list or tuple.')
     if not (len(strides) == 2 and isint(strides[0]) and
@@ -720,12 +803,23 @@ class Conv2D(_Kernel2D):
     out_width = self._compute_static_spatial_dim_size(x._shape._raw_shape[2], 
         kernel._shape._raw_shape[1], strides[1], padding)
 
-    shape = (x._shape._raw_shape[0], out_height, 
-        out_width, kernel._shape._raw_shape[3])
+    if self.input_channels_dim == 2:
+      shape = (x._shape._raw_shape[0], out_height, 
+          out_width, kernel._shape._raw_shape[3])
+    elif self.input_channels_dim == 3:
+      shape = (x._shape._raw_shape[0], out_height,
+          out_width, kernel._shape._raw_shape[2])
+    else:
+      raise ValueError('input channels dim must be 2 or 3.')
+
     super(Conv2D, self).__init__(shape, strides, padding, graph)
     self._arguments['x'] = x
     self._arguments['kernel'] = kernel
     self.increment_num_consumers_for_arguments() 
+
+  @property
+  def input_channels_dim(self):
+    return 2
 
   def _get_kernel_tensor2patchmat(self, kernel_val):
     """A pre-processing step that converts the 4-D kernel tensor into a 2-D 
@@ -743,7 +837,7 @@ class Conv2D(_Kernel2D):
             in_channels dimension
   
     `kernel` is converted into the "patch matrix" layout, i.e. a 2-D matrix
-    of shape [in_channels * filter_height * filter_width, out_channels]
+    of shape [in_channels * kernel_height * kernel_width, out_channels]
 
     0,0,0,0  0,0,0,1
     0,1,0,0  0,1,0,1
@@ -763,14 +857,14 @@ class Conv2D(_Kernel2D):
         in_channels, out_channels], the forward pass value of the kernel.
 
     Returns:
-      2-D numpy array of shape [in_channels * filter_height * filter_width, 
+      2-D numpy array of shape [in_channels * kernel_height * kernel_width, 
         out_channels], the kernel in "patch matrix" layout.
     """
     if 'kernel_val_mat' not in self._graph.get_runtime()._cache_data[self.name]:
       out_channels = kernel_val.shape[3]
       self._graph.get_runtime()._cache_data[self.name]['kernel_val_mat'] = (
           kernel_val.transpose(2, 0, 1, 3).reshape((-1, out_channels)))
-      
+
     return self._graph.get_runtime()._cache_data[self.name]['kernel_val_mat'] 
 
   def _forward(self, feed_dict):
@@ -793,7 +887,7 @@ class Conv2D(_Kernel2D):
     kernel_val_mat = self._get_kernel_tensor2patchmat(kernel_val)
     conv_val_mat = np.dot(x_val_mat, kernel_val_mat)
     return conv_val_mat.reshape(out_height, out_width, batch, out_channels
-        ).transpose(2, 0, 1, 3)    
+        ).transpose(2, 0, 1, 3)
 
   def _backward(self, feed_dict):
     """Retrieve the gradient value of the current node. Then compute and 
@@ -818,10 +912,143 @@ class Conv2D(_Kernel2D):
 
     dx_val_mat = np.dot(grad_val_mat, kernel_val_mat.T)
     dx_val = self._dx_patchmat2tensor(
-        dx_val_mat, x_val, kernel_height, kernel_width)
+        dx_val_mat, x_val.shape, kernel_height, kernel_width)
 
     self._arguments['x'].backward(feed_dict, dx_val)
     self._arguments['kernel'].backward(feed_dict, dkernel_val)
+
+
+class Conv2DTranspose(Conv2D):
+  """Compute Transposed 2D Convolution. Also known as fractionally strided 
+  convolution.
+  """
+  def __init__(self, x, kernel, strides, padding, graph=None):
+    """Constructor.
+
+    Args:
+      x: 4-D node of shape [batch, height, width, in_channels], input tensor.
+      kernel: 4-D node of shape [kernel_height, kernel_width, in_channels, 
+        out_channels], the kernel.
+      strides: a tuple of 2 ints, the stride along the height and width 
+        dimension.
+      padding: string scalar, the padding scheme ('SAME' or 'VALID').
+      graph: a Graph instance.
+    """
+    super(Conv2DTranspose, self).__init__(x, kernel, strides, padding, graph)
+
+  @property
+  def input_channels_dim(self):
+    return 3
+
+  def _forward(self, feed_dict):
+    """Compute the forward pass value of the node.
+
+    Args: 
+      feed_dict: a dict mapping from a `Node` instance to a numpy array.
+
+    Returns:
+      the forward pass value of the node.
+    """
+    x_val = self._arguments['x'].forward(feed_dict)
+    kernel_val = self._arguments['kernel'].forward(feed_dict)
+
+    kernel_height, kernel_width, in_channels, out_channels = kernel_val.shape
+    batch = x_val.shape[0]
+    in_height, in_width = self._get_input_spatial_size(
+        x_val.shape, kernel_height, kernel_width)
+
+    x_val_mat = x_val.transpose(1, 2, 0, 3).reshape((-1, out_channels))
+    kernel_val_mat = self._get_kernel_tensor2patchmat(kernel_val)
+    trans_conv_val_mat = np.dot(x_val_mat, kernel_val_mat.T)
+    trans_conv_val = self._dx_patchmat2tensor(
+        trans_conv_val_mat, 
+        (batch, in_height, in_width, in_channels), 
+        kernel_height, 
+        kernel_width)
+
+    return trans_conv_val
+
+  def _backward(self, feed_dict):
+    """Retrieve the gradient value of the current node. Then compute and 
+    backprop the gradient w.r.t. the argument nodes of the current node.
+
+    Args: 
+      feed_dict: a dict mapping from a `Node` instance to a numpy array.
+    """
+    x_val = self._arguments['x'].forward(feed_dict)
+    kernel_val = self._arguments['kernel'].forward(feed_dict)
+    grad_val = self._graph.get_runtime()._bwval[self.name]
+
+    kernel_height, kernel_width, in_channels, out_channels = kernel_val.shape
+    batch, out_height, out_width = x_val.shape[:-1]
+
+    grad_val_mat = self._get_x_tensor2patchmat(
+        grad_val, kernel_val.shape[0], kernel_val.shape[1])
+
+    x_val_mat = x_val.transpose(1, 2, 0, 3).reshape((-1, out_channels))
+    dkernel_val_mat = np.dot(x_val_mat.T, grad_val_mat)
+    dkernel_val = dkernel_val_mat.reshape(
+        (out_channels, in_channels, kernel_height, kernel_width)
+        ).transpose((2, 3, 1, 0))
+
+    kernel_val_mat = self._get_kernel_tensor2patchmat(kernel_val)
+    dx_val_mat = np.dot(grad_val_mat, kernel_val_mat)
+    dx_val = dx_val_mat.reshape(
+        (out_height, out_width, batch, out_channels)).transpose((2, 0, 1, 3))
+
+    self._arguments['x'].backward(feed_dict, dx_val)    
+    self._arguments['kernel'].backward(feed_dict, dkernel_val)
+
+  def _get_input_spatial_size(self, x_val_shape, kernel_height, kernel_width):
+    """Compute the height and with of the output tensor of Conv2dTranspose.
+
+    Args:
+      x_val_shape: a tuple of 4 ints, holding the dynamic shape 
+        [batch, height, width, depth] of the input tensor.
+      kernel_height: int scalar, height of the kernel.
+      kernel_width: int scalar, width of the kernel.
+
+    Returns:
+      in_height: int scalar, height of input tensor. 
+      in_width: int scalar, width of input tensor.
+    """
+    if self._padding == 'SAME':
+      in_height = x_val_shape[1] * self._strides[0]
+      in_width = x_val_shape[2] * self._strides[1]
+    else:
+      in_height = x_val_shape[1] * self._strides[0] + max(
+          kernel_height - self._strides[0], 0)
+      in_width = x_val_shape[2] * self._strides[1] + max(
+          kernel_width - self._strides[1], 0)
+  
+    return in_height, in_width
+
+  def _compute_static_spatial_dim_size(
+      self, input_size, kernel_size, stride_size, padding):
+    """Overrides the implementation of base class `_Kernel2D`. Compute the 
+    static size of height and width dimension of the output tensor.
+
+    Args:
+      input_size: int scalar or None, the height or width of the input tensor.
+      kernel_size: int scalar, the height or width of the kernel. 
+      stride_size: int scalar, the stride along the height or width dimension.
+      padding: string scalar, the padding scheme ('SAME' or 'VALID').
+      
+    Returns:
+      out_size: int scalar or None, the height or width of the output tensor. 
+    """
+    if input_size is None:
+      out_size = None
+    else:
+      if padding == 'SAME':
+        out_size = input_size * stride_size
+      else: # padding == 'VALID'
+        if kernel_size is None:
+          out_size = None
+        else:
+          out_size = input_size * stride_size + max(
+              kernel_size - stride_size, 0)
+    return out_size
 
 
 class MaxPool2D(_Kernel2D):
@@ -851,6 +1078,10 @@ class MaxPool2D(_Kernel2D):
     self._pad_value = np.nan
     self._arguments['x'] = x
     self.increment_num_consumers_for_arguments()
+
+  @property
+  def input_channels_dim(self):
+    return 2
 
   def _forward(self, feed_dict):
     """Compute the forward pass value of the node.
@@ -908,7 +1139,7 @@ class MaxPool2D(_Kernel2D):
     dx_val_mat = dx_val_mat.reshape((out_height * out_width * batch, 
         in_channels * self._kernel_size[0] * self._kernel_size[1]))
     dx_val = self._dx_patchmat2tensor(
-        dx_val_mat, x_val, self._kernel_size[0], self._kernel_size[1])
+        dx_val_mat, x_val.shape, self._kernel_size[0], self._kernel_size[1])
     self._arguments['x'].backward(feed_dict, dx_val)
 
   def _get_argmax(self, x_val_mat):
@@ -958,6 +1189,10 @@ class AvgPool2D(_Kernel2D):
     self._pad_value = np.nan 
     self._arguments['x'] = x
     self.increment_num_consumers_for_arguments()
+
+  @property
+  def input_channels_dim(self):
+    return 2
 
   def _forward(self, feed_dict):
     """Compute the forward pass value of the node.
@@ -1015,7 +1250,7 @@ class AvgPool2D(_Kernel2D):
         out_height * out_width * batch, 
         in_channels * self._kernel_size[0] * self._kernel_size[1]))
     dx_val = self._dx_patchmat2tensor(
-        dx_val_mat, x_val, self._kernel_size[0], self._kernel_size[1])
+        dx_val_mat, x_val.shape, self._kernel_size[0], self._kernel_size[1])
     self._arguments['x'].backward(feed_dict, dx_val)
 
 

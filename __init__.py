@@ -34,10 +34,13 @@ from autodiff.exports import reduce_mean
 from autodiff.exports import reduce_sum 
 from autodiff.exports import pad 
 from autodiff.exports import sigmoid 
-from autodiff.exports import relu 
+from autodiff.exports import tanh
+from autodiff.exports import relu
+from autodiff.exports import leaky_relu 
 from autodiff.exports import dropout
 from autodiff.exports import fused_batch_norm 
 from autodiff.exports import conv2d 
+from autodiff.exports import conv2d_transpose
 from autodiff.exports import maxpool2d 
 from autodiff.exports import avgpool2d 
 from autodiff.exports import l2norm 

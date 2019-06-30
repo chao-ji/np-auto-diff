@@ -200,6 +200,20 @@ def sigmoid(x):
   return neural_network.Sigmoid(x=x, graph=graph)
 
 
+def tanh(x):
+  """Computes elementwise tanh of input Node.
+
+  Args:
+    x: a Node instance, the input tensor whose elementwise tanh is to be 
+      computed.
+
+  Returns:
+    a Tanh Node of shape `x.shape`.
+  """
+  graph = get_default_graph()
+  return neural_network.Tanh(x=x, graph=graph)
+
+
 def relu(x):
   """Computes elementwise ReLU of input Node.
 
@@ -212,6 +226,21 @@ def relu(x):
   """
   graph = get_default_graph()
   return neural_network.ReLU(x=x, graph=graph)
+
+
+def leaky_relu(x, alpha):
+  """Computes elementwise ReLU of input Node.
+
+  Args:
+    x: a Node instance, the input tensor whose elementwise ReLU is to be 
+      computed.
+    alpha: int scalar, slope of the input in the negative region.
+
+  Returns:
+    a LeakyReLU Node of shape `x.shape`.
+  """
+  graph = get_default_graph()
+  return neural_network.LeakyReLU(x=x, alpha=alpha, graph=graph)
 
 
 def dropout(x, keep_prob, is_training=True):
@@ -293,6 +322,13 @@ def conv2d(x, kernel, strides, padding):
   """
   graph = get_default_graph()
   return neural_network.Conv2D(
+      x=x, kernel=kernel, strides=strides, padding=padding, graph=graph)
+
+
+def conv2d_transpose(x, kernel, strides, padding):
+  """"""
+  graph = get_default_graph()
+  return neural_network.Conv2DTranspose(
       x=x, kernel=kernel, strides=strides, padding=padding, graph=graph)
 
 
