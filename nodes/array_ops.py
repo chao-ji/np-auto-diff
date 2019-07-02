@@ -22,6 +22,7 @@ import numpy as np
 
 from autodiff.core import base_node
 from autodiff.type_utils import isint
+from autodiff.nodes import origin_nodes
 
 
 class MatMul(base_node.Node):
@@ -318,7 +319,209 @@ class Pad(base_node.Node):
 
 
 class Concat(base_node.Node):
+  """Concatenate tensors of the same rank along one of the dimensions. 
+  """
   def __init__(self, tensors, axis=0, graph=None):
-    pass
+    """Constructor.
+
+    Args:
+      tensors: a list (>= 2) of Node instances, holding tensors of the same rank
+        (i.e. num of dimension). They must have the same size in all dimension 
+        except for the axis `axis`.
+      axis: int scalar, the axis that `tensors` will be concatenated along. 
+      graph: a Graph instance.
+    """
+    if not isinstance(tensors, (list, tuple)) or len(tensors) < 2:
+      raise ValueError('`tensors` must be either a list or tuple of size >= 2.')
+    shapes = [t._shape for t in tensors]
+    if len(set([s._ndims for s in shapes])) != 1:
+      raise ValueError('inputs of Concat must have the same rank.')
+    if not (0 <= axis < shapes[0]._ndims):
+      raise ValueError('`axis` must be in `[0, ndims)`.') 
+
+    shape = []
+    for i in range(shapes[0]._ndims):
+      sizes = [s._raw_shape[i] for s in shapes]
+      if i != axis:
+        sizes = set(sizes)
+        if len(sizes) >= 3 or (len(sizes) == 2 and None not in sizes):
+          raise ValueError('input nodes must have the same shape except for '
+              ' the `axis` (%d) dimension. Got inconsistent shape at axis %d' % 
+              (axis, i))
+        sizes = list(sizes)
+        shape.append(sizes[0] if len(sizes) == 1 
+            or sizes[1] is None else sizes[1])
+      else:    
+        shape.append(None if None in sizes else sum(sizes))
+          
+    super(Concat, self).__init__(shape, graph)
+    self._axis = axis
+    for i, t in enumerate(tensors):
+      self._arguments['x_' + str(i)] = t
+    self.increment_num_consumers_for_arguments()
+
+  def _forward(self, feed_dict):
+    """Compute the forward pass value of the node.
+
+    Args: 
+      feed_dict: a dict mapping from a `Node` instance to a numpy array.
+
+    Returns:
+      the forward pass value of the node.
+    """
+    x_vals = [self._arguments['x_' + str(i)].forward(feed_dict)
+        for i in range(len(self._arguments))]
+    val = np.concatenate(x_vals, axis=self._axis) 
+    return val
+
+  def _backward(self, feed_dict):
+    """Retrieve the gradient value of the current node. Then compute and 
+    backprop the gradient w.r.t. the argument nodes of the current node.
+
+    Args: 
+      feed_dict: a dict mapping from a `Node` instance to a numpy array.
+    """
+    grad_val = self._graph.get_runtime()._bwval[self.name]
+    x_vals = [self._arguments['x_' + str(i)].forward(feed_dict)
+        for i in range(len(self._arguments))]
+
+    sections = np.cumsum([x_val.shape[self._axis] for x_val in x_vals])[:-1]
+    dx_vals = np.split(grad_val, sections, axis=self._axis)
+
+    for i, dx_val in enumerate(dx_vals):
+      self._arguments['x_' + str(i)].backward(feed_dict, dx_val)
 
 
+class Slice(base_node.Node):
+  """Slice out a sub-tensor from an input tensor."""
+  def __init__(self, x, begin, sizes, graph=None):
+    """Constructor.
+
+    Args:
+      x: a Node instance, the input tensor to be sliced.
+      begin: a Node instance of rank 1, or a list or tuple of ints of length
+        x.shape.ndims (i.e. rank of `x`).
+      sizes: a Node instance of rank 1, or a list or tuple of ints of length
+        x.shape.ndims (i.e. rank of `x`).
+      graph: a Graph instance.
+    """
+    begin = self._validate_input(begin, 'begin', graph)
+    sizes = self._validate_input(sizes, 'sizes', graph)
+
+    if (x._shape._ndims != begin._shape._raw_shape[0] or 
+        x._shape._ndims != sizes._shape._raw_shape[0]):
+      raise ValueError('the length of `begin` and `sizes` must be the same as '
+          ' the rank of `x`.')
+
+    if isinstance(sizes, origin_nodes.Constant):
+      shape = [int(size) if size != -1 else None for size in sizes._val]
+    else:
+      shape = [None] * x._shape._ndims
+    
+    super(Slice, self).__init__(shape, graph)
+    self._arguments['x'] = x
+    self._arguments['begin'] = begin
+    self._arguments['sizes'] = sizes
+    self.increment_num_consumers_for_arguments()
+
+  def _forward(self, feed_dict):
+    """Compute the forward pass value of the node.
+
+    Args: 
+      feed_dict: a dict mapping from a `Node` instance to a numpy array.
+
+    Returns:
+      the forward pass value of the node.
+    """
+    x_val = self._arguments['x'].forward(feed_dict)
+    begin_val = self._arguments['begin'].forward(feed_dict)
+    sizes_val = self._arguments['sizes'].forward(feed_dict)
+    slices = self._get_slices(begin_val, sizes_val, x_val)
+    slice_val = x_val[slices]
+    return slice_val
+
+  def _backward(self, feed_dict):
+    """Retrieve the gradient value of the current node. Then compute and 
+    backprop the gradient w.r.t. the argument nodes of the current node.
+
+    Args: 
+      feed_dict: a dict mapping from a `Node` instance to a numpy array.
+    """
+    grad_val = self._graph.get_runtime()._bwval[self.name]
+    x_val = self._arguments['x'].forward(feed_dict)
+    begin_val = self._arguments['begin'].forward(feed_dict)
+    sizes_val = self._arguments['sizes'].forward(feed_dict)
+
+    dx_val = np.zeros_like(x_val, dtype='float32')
+    slices = self._get_slices(begin_val, sizes_val, x_val)  
+    dx_val[slices] = grad_val
+    self._arguments['x'].backward(feed_dict, dx_val) 
+
+  def _get_slices(self, begin_val, sizes_val, x_val):
+    """Utility function. Compute the slice indices.
+
+    `sizes_val[i] == -1` indicates, the remaining elements after `begin_val[i]`
+     in the `i`-th dimension will be slices.
+
+    For each dimension `i`, we must have 
+
+    0 <= begin_val[i] <= x_val.shape[1] 
+
+    and  begin_val[i] <= begin_val[i] + sizes_val[i] <= x_val.shape[i]
+
+    Args:
+      begin_val: Numpy array of rank-1, the begin index in each dimension.
+      sizes_val: Numpy array of rank-1, the size to be slices in each dimension.
+      x_val: Numpy array of rank `len(begin_val)` or `len(sizes_val)`, the value
+        of input tensor `x`.
+
+    Returns:
+      a list of python `slice` instances.
+    """
+    if 'slices' not in self._graph.get_runtime()._cache_data[self.name]:
+      slices = []
+      for begin, size, x_size in zip(begin_val, sizes_val, x_val.shape):
+        if not (0 <= begin <= x_size):
+          raise ValueError('for each dimension, `begin` must be >= 0 and '
+              '<= x.dim_size[i] (%d), but got %d' % (x_size, begin))
+        if size == -1:
+          size = x_size - begin
+        if not (begin <= begin + size <= x_size):
+          raise ValueError('for each dimension, `begin + size` must be >= ' 
+              '`begin` and <= x.dim_size[i] (%d), but got %d' % (
+              x_size, begin + size))
+        slices.append(slice(int(begin), int(begin + size)))
+      self._graph.get_runtime()._cache_data[self.name]['slices'] = slices
+    return self._graph.get_runtime()._cache_data[self.name]['slices']
+
+
+  def _validate_input(self, input_, name, graph):
+    """Utility function. Validate the input `begin` or `sizes`, and optionally
+    convert them into `Constant` nodes if they are not `Node` instances. 
+    
+    `begin` and `sizes` are passed in as 1-D tensors, or as a list or tuple of 
+    ints. In the latter case, they are automatically converted to `Contant` 
+    nodes of rank 1.
+
+    Args:
+      input_: a Node instance of rank 1, or a list or tuple of integers.
+      name: string scalar, name of the input.
+      graph: a Graph instance.
+
+    Returns:
+      a Node instance of rank 1.
+    """
+    if not isinstance(input_, base_node.Node):
+      if not isinstance(input_, (tuple, list)) or any([
+          not isinstance(i, int) for i in input_]):
+        raise TypeError('`%s` must be either a tuple or list of integers or a '
+            'Node instance.' % name)
+
+      input_ = origin_nodes.Constant(input_, graph) 
+    if input_._shape._ndims != 1:
+      raise ValueError('`%s` must be 1-D tensor.' % name)
+    if input_._shape._raw_shape[0] is None:
+      raise ValueError('the shape of `%s` must be determined at graph '
+          'construction time.')
+
+    return input_

@@ -33,6 +33,8 @@ from autodiff.exports import reshape
 from autodiff.exports import reduce_mean 
 from autodiff.exports import reduce_sum 
 from autodiff.exports import pad 
+from autodiff.exports import concat
+from autodiff.exports import slice
 from autodiff.exports import sigmoid 
 from autodiff.exports import tanh
 from autodiff.exports import relu
@@ -45,6 +47,7 @@ from autodiff.exports import maxpool2d
 from autodiff.exports import avgpool2d 
 from autodiff.exports import l2norm 
 from autodiff.exports import softmax_cross_entropy_loss
+from autodiff.exports import sigmoid_cross_entropy_loss
  
 from autodiff.core.environments import Graph
 from autodiff.core.environments import RunTime 

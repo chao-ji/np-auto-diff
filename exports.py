@@ -186,6 +186,51 @@ def pad(x, paddings, constant_value=0):
       x=x, paddings=paddings, constant_value=constant_value, graph=graph)
 
 
+def concat(tensors, axis=0):
+  """Concatenate tensors of the same rank along one of the dimensions. 
+
+  Suppose `tensors[i]` has shape [s_0, s_1, ..., s_axis_i, ...]
+
+  The output Node has shape [s_0, s_1, ..., sum(s_axis_i), ...].
+
+  Args:
+    tensors: a list (>= 2) of Node instances, holding tensors of the same rank
+      (i.e. num of dimension). They must have the same size in all dimension 
+      except for the axis `axis`.
+    axis: int scalar, the axis that `tensors` will be concatenated along. 
+
+  Returns:
+    a Concat Node.
+  """
+  graph = get_default_graph()
+  return array_ops.Concat(tensors=tensors, axis=axis, graph=graph)
+
+
+def slice(x, begin, sizes):
+  """Slice out a sub-tensor from input tensor.
+
+  Equivalent to Numpy syntax if `x` were Numpy array:
+
+  x[begin[0]: begin[0] + sizes[0], ..., begin[-1]: begin[-1] + sizes[-1]]
+
+  For each dimension `i`, we must have
+
+  0 <= begin[i] <= begin[i] + sizes[i] < x.shape[i]
+
+  Args:
+    x: a Node instance, the input tensor to be sliced.
+    begin: a Node instance of rank 1, or a list or tuple of ints of length
+      x.shape.ndims (i.e. rank of `x`).
+    sizes: a Node instance of rank 1, or a list or tuple of ints of length
+      x.shape.ndims (i.e. rank of `x`).    
+
+  Returns:
+    a Slice Node of shape `sizes`.
+  """
+  graph = get_default_graph()
+  return array_ops.Slice(x, begin, sizes, graph=graph)
+
+
 def sigmoid(x):
   """Computes elementwise sigmoid of input Node.
 
@@ -326,7 +371,24 @@ def conv2d(x, kernel, strides, padding):
 
 
 def conv2d_transpose(x, kernel, strides, padding):
-  """"""
+  """Compute 2D Transposed Convolution.
+
+  Note: the `in_channels` and `out_channels` corresponds to the input and
+  output channels of the UN-TRANSPOSED version of Conv2D. So the last dim of
+  `x` has size `out_channels`.
+
+  Args:
+    x: 4-D node of shape [batch, height, width, out_channels], input tensor.
+    kernel: 4-D node of shape [kernel_height, kernel_width, in_channels, 
+      out_channels], the kernel.
+    strides: a tuple of 2 ints, the stride along the height and width 
+      dimension.
+    padding: string scalar, the padding scheme ('SAME' or 'VALID').
+ 
+  Returns:
+    a Conv2DTranspose node of shape 
+      [batch, height_out, width_out, out_channels].
+  """
   graph = get_default_graph()
   return neural_network.Conv2DTranspose(
       x=x, kernel=kernel, strides=strides, padding=padding, graph=graph)
@@ -391,6 +453,8 @@ def l2norm(x, scalar):
 def softmax_cross_entropy_loss(labels, logits):
   """Computes the elementwise softmax cross entropy.
 
+  Note: this implementation does not compute gradient w.r.t `lables`.
+  
   Args:
     labels: a Node instance, the tensor holding the groundtruth class labels.
       The last dimension is treated as the class dimension.
@@ -402,4 +466,22 @@ def softmax_cross_entropy_loss(labels, logits):
   """
   graph = get_default_graph()
   return losses.SoftmaxCrossEntropyLoss(
+      labels=labels, logits=logits, graph=graph)
+
+
+def sigmoid_cross_entropy_loss(labels, logits):
+  """Computes the elementwise sigmoid cross entropy.
+
+  Note: this implementation does not compute gradient w.r.t `lables`.
+
+  Args:
+    labels: a Node instance, the tensor holding the groundtruth class labels.
+    logits: a Node instance of same shape as `labels`, the tensor holding the
+      logits. 
+
+  Returns:
+    a SigmoidCrossEntropyLoss node of shape `labels.shape`.
+  """
+  graph = get_default_graph()
+  return losses.SigmoidCrossEntropyLoss(
       labels=labels, logits=logits, graph=graph)

@@ -76,6 +76,26 @@ class TruncatedNormalInitializer(Initializer):
     return values.reshape(shape).astype(np.float32)
 
 
+class RandomUniformInitializer(Initializer):
+  """Random Uniform initializer.
+
+  Draw values from the interval [minval, maxval] uniformly.
+  """
+  def __call__(self, shape):
+    """Generate the numpy array holding initialized values.
+
+    Args:
+      shape: a tuple or list of integers, the shape of numpy array.
+
+    Returns:
+      numpy array of shape `shape`.
+    """
+    seed = self._params['seed'] if 'seed' in self._params else None
+    random_state = np.random.RandomState(seed=seed)
+    return random_state.uniform(
+        low=self._params['minval'], high=self._params['maxval'], size=shape)
+
+
 class ZerosInitializer(Initializer):
   """Initialize an all-zero numpy array."""
   def __call__(self, shape):

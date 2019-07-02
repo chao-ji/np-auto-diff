@@ -71,7 +71,7 @@ class SoftmaxCrossEntropyLoss(base_node.Node):
     self._arguments['logits'].backward(feed_dict, dlogits_val)
 
   def _get_softmax(self, feed_dict):
-    """Compute the softmax of logits.
+    """Utility function. Compute the softmax of logits.
 
     Args:
       feed_dict: a dict mapping from a `Node` instance to a numpy array.
@@ -90,4 +90,65 @@ class SoftmaxCrossEntropyLoss(base_node.Node):
 
 
 class SigmoidCrossEntropyLoss(base_node.Node):
-  pass
+  """Computes the elementwise sigmoid cross entropy.
+  """
+  def __init__(self, labels, logits, graph=None):
+    """Constructor.
+
+    Args:
+      labels: a Node instance, the tensor holding the groundtruth class labels.
+      logits: a Node instance of same shape as `labels`, the tensor holding the
+        logits. 
+      graph: a Graph instance.
+    """
+    super(SigmoidCrossEntropyLoss, self).__init__(
+        labels._shape, graph)
+    self._arguments['labels'] = labels
+    self._arguments['logits'] = logits
+    self.increment_num_consumers_for_arguments()
+
+  def _forward(self, feed_dict):
+    """Compute the forward pass value of the node.
+
+    Args: 
+      feed_dict: a dict mapping from a `Node` instance to a numpy array.
+
+    Returns:
+      the forward pass value of the node.
+    """
+    logits_val = self._arguments['logits'].forward(feed_dict)
+    labels_val = self._arguments['labels'].forward(feed_dict)  
+
+    cross_entropy_val = (np.maximum(logits_val, 0) - logits_val * labels_val + 
+        np.log(1 + 1 / self._get_exp_abs(logits_val)))
+    return cross_entropy_val
+
+  def _backward(self, feed_dict):
+    """Retrieve the gradient value of the current node. Then compute and 
+    backprop the gradient w.r.t. the argument nodes of the current node.
+
+    Args: 
+      feed_dict: a dict mapping from a `Node` instance to a numpy array.
+    """
+    grad_val = self._graph.get_runtime()._bwval[self.name]
+    logits_val = self._arguments['logits'].forward(feed_dict)
+    labels_val = self._arguments['labels'].forward(feed_dict)
+
+    dlogits_val = np.where(logits_val > 0, 1, 0) - labels_val + 1 / (
+        self._get_exp_abs(logits_val) + 1) * np.where(logits_val > 0, -1, 1)
+    dlogits_val *= grad_val
+    self._arguments['logits'].backward(feed_dict, dlogits_val)
+
+  def _get_exp_abs(self, logits_val):
+    """Utility function. Computes `exp(abs(.))`.
+
+    Args:
+      logits_val: Numpy array, holding the value of logits.
+
+    Returns:
+      Numpy array of the same shape, holding the element wise `exp(abs(.))`.
+    """
+    if 'exp_abs' not in self._graph.get_runtime()._cache_data[self.name]:
+      self._graph.get_runtime()._cache_data[self.name]['exp_abs'] = np.exp(
+          np.abs(logits_val))
+    return self._graph.get_runtime()._cache_data[self.name]['exp_abs']

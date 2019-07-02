@@ -33,6 +33,9 @@ def to_numpy(val):
   """Converts input to a numpy array."""
   if not isinstance(val, np.ndarray):
     val = np.array(val).astype(np.float32)
+  if np.isnan(val) is True or np.isnan(val).any():
+    raise ValueError('ALL value passed as input to `Constant` node must be '
+        'determined at graph construction type')
   return val
 
 def is_numeric(val):
