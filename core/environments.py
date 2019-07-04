@@ -194,6 +194,7 @@ class RunTime(object):
     self._bwval = dict()
     self._cache_data = collections.defaultdict(dict)
     self._backprop_count = collections.defaultdict(int)
+    self._nodes_stop_grad = set()
 
   def get_bwval(self, name):
     """Get the backward pass value of the node.
@@ -239,12 +240,36 @@ class RunTime(object):
     self._bwval = dict()
     self._cache_data = collections.defaultdict(dict)
     self._backprop_count = collections.defaultdict(int)
+    self._nodes_stop_grad = set()
+
+  def stop_grad(self, node):
+    """Stop gradient from backpropogating through `node`.
+
+    Args:
+      node: a Node instance.
+    """
+    self._nodes_stop_grad.add(node.name)
+
+  def grad_stopped(self, node):
+    """Check if gradient is stopped at `node`.
+
+    Args:
+      node: a Node instance.
+    """
+    return node.name in self._nodes_stop_grad
 
   @contextlib.contextmanager
-  def forward_backward_cycle(self):
+  def forward_backward_cycle(self, grad_stopped_nodes=None):
     """Returns the context manager that clears the dynamic data at the beginning
     and end of each forward-backward cycle.
+
+    Args:
+      grad_stopped_nodes: a list of Node instances. 
     """
+    if grad_stopped_nodes is not None:
+      for node in grad_stopped_nodes:
+        self.stop_grad(node)
+
     try:
       self.reset()
       yield self

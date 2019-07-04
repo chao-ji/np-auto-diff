@@ -153,7 +153,6 @@ class Node(object):
     self._shape = (shape if isinstance(shape, TensorShape) 
         else TensorShape(*shape))
     self._graph = graph
-    self._consumers = []
     self._arguments = dict()
     self._num_consumers = 0
 
@@ -201,6 +200,13 @@ class Node(object):
     for k in self._arguments.keys():
       self._arguments[k].increment_num_consumers()
 
+  def set_num_consumers(self, val):
+    """Set the number of consumer nodes (i.e. descendents) of the current node.
+    """
+    if not isinstance(val, int) or val < 0:
+      raise ValueError('`val` must be non-negative integer.')
+    self._num_consumers = val
+
   def forward(self, feed_dict=None):
     """Compute the forward pass value of the node, or retrieve that value if 
     already computed.
@@ -243,13 +249,15 @@ class Node(object):
         backpropped from one of its consumer node. If None, defaults to an
         all-one array with shape `self._shape`.
     """
-    if (self._graph.get_runtime().backprop_initiated(self) and 
-        self._graph.get_runtime().backprop_finished(self)):
-      # full gradient w.r.t. the current node is already computed. 
+    if ((self._graph.get_runtime().backprop_initiated(self) and 
+        self._graph.get_runtime().backprop_finished(self)) or 
+        self._graph.get_runtime().grad_stopped(self)):
+      # full gradient w.r.t. the current node is already computed,
+      # or gradient propogation is stopped at the current node. 
       return
 
     if self.name not in self._graph.get_runtime()._bwval:
-      # first time one of the consumer node calls `backward()` of current node.
+      # the first time one of the consumers calls `backward()` of current node.
       val = self.forward(feed_dict)
       self._graph.get_runtime()._bwval[self.name] = np.zeros(
           val.shape, dtype=np.float32)

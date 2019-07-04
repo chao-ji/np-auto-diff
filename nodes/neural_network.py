@@ -189,27 +189,27 @@ class Dropout(base_node.Node):
   """Compute elementwise dropout of input tensor.
 
   In training mode, some random set of elements are zeroed with probability 
-  `1 - keep_prob`, while those that are not zeroed are scaled up by 
-  `1 / keep_prob`. In test mode, all elements are output as is.
+  `rate`, while those that are not zeroed are scaled up by `1 / (1 - rate)`. 
+  In test mode, all elements are output as is.
   """
-  def __init__(self, x, keep_prob, is_training=True, graph=None):
+  def __init__(self, x, rate, is_training=True, graph=None):
     """Constructor.
 
     Args:
       x: a Node instance, the input tensor.
-      keep_prob: float scalar, the probability that an element is kept as is.
+      rate: float scalar, the probability that an element is dropped.
       is_training: bool scalar, whether dropout is in training mode.
       graph: a Graph instance.
     """
-    if not isinstance(keep_prob, float):
-      raise TypeError('keep_prob must be a float.')
-    if keep_prob < 0 or keep_prob > 1:
-      raise ValueError('keep_prob must be in [0, 1].')
+    if not isinstance(rate, float):
+      raise TypeError('`rate` must be a float.')
+    if rate < 0 or rate > 1:
+      raise ValueError('`rate` must be in [0, 1].')
     if not isinstance(is_training, bool):
       raise TypeError('is_training must be a bool.')
     super(Dropout, self).__init__(x._shape, graph)
     self._arguments['x'] = x
-    self._keep_prob = keep_prob
+    self._rate = rate
     self._is_training = is_training
     self.increment_num_consumers_for_arguments()
 
@@ -224,7 +224,7 @@ class Dropout(base_node.Node):
     x_val = self._arguments['x'].forward(feed_dict)
     if not self._is_training:
       return x_val
-    x_dropout_val = x_val / self._keep_prob
+    x_dropout_val = x_val / (1 - self._rate)
     mask = self._get_mask(x_val.shape)
     x_dropout_val[mask] = 0.
     return x_dropout_val
@@ -237,7 +237,7 @@ class Dropout(base_node.Node):
       feed_dict: a dict mapping from a `Node` instance to a numpy array.
     """
     grad_val = self._graph.get_runtime()._bwval[self.name]
-    dx_val = grad_val / self._keep_prob
+    dx_val = grad_val / (1 - self._rate)
     mask = self._get_mask(grad_val.shape)
     dx_val[mask] = 0.
     self._arguments['x'].backward(feed_dict, dx_val)
@@ -254,7 +254,7 @@ class Dropout(base_node.Node):
     """
     if 'mask' not in self._graph.get_runtime()._cache_data[self.name]:
       self._graph.get_runtime()._cache_data[self.name]['mask'] = np.random.binomial(
-          1, 1 - self._keep_prob, size=shape).astype(np.bool) 
+          1, self._rate, size=shape).astype(np.bool) 
     return self._graph.get_runtime()._cache_data[self.name]['mask']
 
 

@@ -47,23 +47,44 @@ class Optimizer(object):
     else:
       return '<%s>' % type(self).__name__
 
-  def compute_gradients(self, objective, feed_dict):
+  def compute_gradients(self, objective, feed_dict, var_list=None):
     """Pass an all-one numpy array to the objective tensor, and collect the 
     backpropped gradient w.r.t each trainable variable.
 
     Args:
       objective: a Node instance, the objective to be minimized.
       feed_dict: a dict mapping from a `Node` instance to a numpy array.
+      var_list: a list of Variable instances, the variables which graident will
+        be computed with respect to.
 
     Returns:
       grads_and_vars: a list of (gradient, variable) pairs, where gradient is
         numpy array, and variable is a Node instance.
     """
     graph = objective._graph
+    if var_list is None:
+      var_list = graph.get_variables(only_trainable=True)
+
     objective.backward(feed_dict=feed_dict)
     grads_and_vars = [(graph.get_runtime()._bwval[v.name], v) 
-        for v in graph.get_variables(only_trainable=True)]
+        for v in var_list]
     return grads_and_vars
+
+  def optimize(self, objective, feed_dict, var_list=None):
+    """Optimize the objective by chaining `compute_gradients()` and 
+    `apply_gradients()`.
+
+    Call this function if no gradient postprocessing (e.g. scaling, clipping) 
+    is needed.
+
+    Args:
+      objective: a Node instance, the objective to be minimized.
+      feed_dict: a dict mapping from a `Node` instance to a numpy array.      
+      var_list: a list of Variable instances, the variables the `objective`
+        will be optimized over.
+    """
+    grads_and_vars = self.compute_gradients(objective, feed_dict, var_list)
+    self.apply_gradients(grads_and_vars)
 
   @abstractmethod
   def apply_gradients(self):
@@ -82,20 +103,6 @@ class GradientDescentOptimizer(Optimizer):
     """
     for grad, var in grads_and_vars:
       var.set_val(var.val - self._params['alpha'] * grad) 
-
-  def optimize(self, objective, feed_dict):
-    """Optimize the objective by chaining `compute_gradients()` and 
-    `apply_gradients()`.
-
-    Call this function if no gradient postprocessing (e.g. scaling, clipping) 
-    is needed.
-
-    Args:
-      objective: a Node instance, the objective to be minimized.
-      feed_dict: a dict mapping from a `Node` instance to a numpy array.      
-    """
-    grads_and_vars = self.compute_gradients(objective, feed_dict)
-    self.apply_gradients(grads_and_vars)
 
 
 class AdamOptimizer(Optimizer):
@@ -136,14 +143,13 @@ class AdamOptimizer(Optimizer):
                                     self._params['beta1'], 
                                     self._params['beta2'], 
                                     self._params['epsilon'])
-    t = self._t
+    t = self._t + 1
     m = self._m if self._m is not None else self._initialize_moments(
         grads_and_vars) 
     v = self._v if self._v is not None else self._initialize_moments(
         grads_and_vars)
 
-    alpha_t = (alpha if t < 1 else 
-        alpha * np.sqrt(1 - np.power(beta2, t)) / (1 - np.power(beta1, t)))
+    alpha_t = alpha * np.sqrt(1 - np.power(beta2, t)) / (1 - np.power(beta1, t))
 
     for grad, var in grads_and_vars:
       m[var.name] = beta1 * m[var.name] + (1 - beta1) * grad
@@ -153,18 +159,4 @@ class AdamOptimizer(Optimizer):
 
     self._m = m
     self._v = v
-    self._t += 1
-
-  def optimize(self, objective, feed_dict):
-    """Optimize the objective by chaining `compute_gradients()` and 
-    `apply_gradients()`.
-
-    Call this function if no gradient postprocessing (e.g. scaling, clipping) 
-    is needed.
-
-    Args:
-      objective: a Node instance, the objective to be minimized.
-      feed_dict: a dict mapping from a `Node` instance to a numpy array.
-    """
-    grads_and_vars = self.compute_gradients(objective, feed_dict)
-    self.apply_gradients(grads_and_vars)
+    self._t = t

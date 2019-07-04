@@ -494,7 +494,6 @@ class Slice(base_node.Node):
       self._graph.get_runtime()._cache_data[self.name]['slices'] = slices
     return self._graph.get_runtime()._cache_data[self.name]['slices']
 
-
   def _validate_input(self, input_, name, graph):
     """Utility function. Validate the input `begin` or `sizes`, and optionally
     convert them into `Constant` nodes if they are not `Node` instances. 

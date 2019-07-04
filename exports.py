@@ -288,17 +288,16 @@ def leaky_relu(x, alpha):
   return neural_network.LeakyReLU(x=x, alpha=alpha, graph=graph)
 
 
-def dropout(x, keep_prob, is_training=True):
+def dropout(x, rate, is_training=True):
   """Computes elementwise dropout of input Node.
 
   In training mode, some random set of elements are zeroed with probability 
-  `1 - keep_prob`, while those that are not zeroed are scaled up by 
-  `1 / keep_prob`. In test mode, all elements are output as is (i.e. identity 
-  function).
+  `rate`, while those that are not zeroed are scaled up by `1 / (1 - rate)`. 
+  In test mode, all elements are output as is.
 
   Args:
     x: a Node instance, the input tensor.
-    keep_prob: float scalar, the probability that an element is kept as is.
+    rate: float scalar, the probability that an element is dropped.
     is_training: bool scalar, whether dropout is in training mode.
 
   Returns:
@@ -306,7 +305,7 @@ def dropout(x, keep_prob, is_training=True):
   """
   graph = get_default_graph()
   return neural_network.Dropout(
-      x=x, keep_prob=keep_prob, is_training=is_training, graph=graph)
+      x=x, rate=rate, is_training=is_training, graph=graph)
 
 
 def fused_batch_norm(x,
