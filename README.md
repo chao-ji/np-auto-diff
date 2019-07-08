@@ -16,9 +16,39 @@
 
 This is a NumPy based framework that provides Python program interfaces for defining the computational graph and mechnisms for running the forward and backward pass to compute the derivatives. The computational graph can be built by connecting nodes (like you would do in TensorFlow or PyTorch) using basic arithmetic operations, tensor transformation operations, and common neural network layers. The actual computation of the intermediate values and derivatives is handled by NumPy. 
 
+**Operations Supported**
+
+|Operation|Discription|
+|--       |--         |
+|`add`      |componentwise addition, supports broadcasting, and the `+` syntax|
+|`multiply`| componentwise multiplication, supports broadcasting, and the `*` syntax|
+|`sigmoid`|Sigmoid|
+|`tanh`|Tanh|
+|`relu`|ReLU|
+|`leaky_relu`|Leaky ReLU|
+|`dropout`|Dropout, in training or test mode|
+|`fused_batch_norm`|Batch normalization, in training or test mode|
+|`conv2d`|2D convolution|
+|`conv2d_transpose`|Transposed 2D convolution|
+|`maxpool_2d`|2D max pooling|
+|`avgpool_2d`|2D average pooling|
+|`l2norm`|Computes L2 Norm of a tensor|
+|`matmul`|Multiply two matrices of shape `[m, n]` and `[n, p]`|
+|`reshape`|Reshape a tensor|
+|`reduce_mean`|Compute the mean of a tensor over a subset of axes|
+|`reduce_sum`|Compute the sum of a tensor over a subset of axes|
+|`pad`|Pad a tensor to a desired shape|
+|`concat`|Concatenate a list of tensors along an axis|
+|`slice`|Slice out a sub-tensor|
+|`softmax_cross_entropy_loss`|Softmax cross entropy loss between `labels` and `logits`|
+|`sigmoid_cross_entropy_loss`|Sigmoid cross entropy loss between `labels` and `logits`|
+|`placeholder`|A tensor whose value can be supplied when the forward/backward pass is executed|
+|`variable`|A tensor whose value persists across different forward/backward cycles|
+|`constant`|A tensor with constant value| 
+
 ## Highlights
 * Forward pass and Backward pass are expressed as vectorized (i.e. broadcasting) Numpy operations.
-* Provides common neural network layers (Convolotion, BatchNorm, Dropout, etc.) that allows one to build a wide range of neural network architectures for different tasks (e.g. from logistic regression, to image classification, and images generation using GAN).
+* Provides common neural network layers (Convolution, BatchNorm, Dropout, etc.) that allows one to build a wide range of neural network architectures for different tasks (e.g. from logistic regression, to image classification, and images generation using GAN).
 
 
 
@@ -178,5 +208,5 @@ Currently only a minimal set of `Node` classes have been implemented (e.g. `Add`
 
 ## Disclaimer
 
-I started this work only as an experiment for understanding how deep neural networks are trained, so I never intend this to be used in a production setting.
+I started this work only as an experiment for understanding how deep neural networks are trained in popular frameworks (e.g. tensorflow), and I never intend this to be used in a production environment.
 
