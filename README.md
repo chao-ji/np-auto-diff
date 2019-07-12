@@ -16,7 +16,7 @@
 
 This is a NumPy based framework that provides Python program interfaces for defining the computational graph and mechnisms for running the forward and backward pass to compute the derivatives. The computational graph can be built by connecting nodes (like you would do in TensorFlow or PyTorch) using basic arithmetic operations, tensor transformation operations, and common neural network layers. The actual computation of the intermediate values and derivatives is handled by NumPy. 
 
-**Operations Supported**
+**List of Operations Supported** (growing)
 
 |Operation|Discription|
 |--       |--         |
@@ -46,9 +46,13 @@ This is a NumPy based framework that provides Python program interfaces for defi
 |`variable`|A tensor whose value persists across different forward/backward cycles|
 |`constant`|A tensor with constant value| 
 
-## Highlights
-* Forward pass and Backward pass are expressed as vectorized (i.e. broadcasting) Numpy operations.
-* Provides common neural network layers (Convolution, BatchNorm, Dropout, etc.) that allows one to build a wide range of neural network architectures for different tasks (e.g. from logistic regression, to image classification, and images generation using GAN).
+One can build a wide range of neural network architectures, from [logistic regression](demos/logistic_regression.ipynb), to [MNIST handwritten digits classification](demos/conv_net.ipynb), and [handwritten digits generation using GAN](demos/dcgan.ipynb).
+
+## Design ideas  
+* Represent neural network architecture as a DAG, where each node corresponds to an operation (e.g. Conv2D, arithmetic op, reshape, etc.)
+* Separate the construction of the neural network architecture (`Graph`, like the graph in TensorFlow) from the actual computation (`Runtime`, the equivalent of `Session` in TensorFlow). The actual value of nodes are stored in a `Runtime` object, and are recomputed in each forward-backward-cycle.
+* Computation of Forward pass and Backward pass are expressed as vectorized (i.e. broadcasting) Numpy operations.
+
 
 
 
@@ -206,7 +210,7 @@ The above code snippets only cover the essential mechanics to create and execute
 
 Currently only a minimal set of `Node` classes have been implemented (e.g. `Add`, `Multiply`, `Reshape`, `Conv2D`, `FusedBatchNorm`), and additional `Node` types will be added later. To add new `Node` types, you need to subclass from the `Node` class in this file [base_node.py](core/base_node.py), and override the abstract methods `_forward()` and `_backward()`. Check [this guide](g3doc/forward_backward.md) for more details. 
 
-## Disclaimer
+## Remarks
 
-I started this work only as an experiment for understanding how deep neural networks are trained in popular frameworks (e.g. tensorflow), and I never intend this to be used in a production environment.
+I started out this work when I was trying to figure out exactly how gradients are computed when training deep neural networks in TensorFlow, and see if I can replicate the behavior of TF using Numpy. Because the motivation was purely experimentation, I thought numpy would be good enough, and had no plan to add GPU support (e.g. using CUDA). It will be way too slow if you were to train a real, production-level neural network.
 
