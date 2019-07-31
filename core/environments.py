@@ -193,7 +193,6 @@ class RunTime(object):
     self._fwval = dict()
     self._bwval = dict()
     self._cache_data = collections.defaultdict(dict)
-    self._backprop_count = collections.defaultdict(int)
     self._nodes_stop_grad = set()
 
   def get_bwval(self, name):
@@ -209,37 +208,12 @@ class RunTime(object):
       raise ValueError('node \'%s\' not in bwval' % name)
     return self._bwval[name]
   
-  def increment_backprop_count(self, node):
-    """Increment the backprop count.
-
-    Args:
-      node: a Node instance.
-    """
-    self._backprop_count[node.name] += 1
-
-  def backprop_initiated(self, node):
-    """Returns whether backpropagation is initiated for the given node.
-
-    Args:
-      node: a Node instance.
-    """
-    return node.name in self._backprop_count
-  
-  def backprop_finished(self, node):
-    """Returns whether backprogation is finished for the given node.
-
-    Args:
-      node: a Node instance.
-    """
-    return self._backprop_count[node.name] == node._num_consumers
-
   def reset(self):
     """Reset the dynamic properties.
     """
     self._fwval = dict()
     self._bwval = dict()
     self._cache_data = collections.defaultdict(dict)
-    self._backprop_count = collections.defaultdict(int)
     self._nodes_stop_grad = set()
 
   def stop_grad(self, node):

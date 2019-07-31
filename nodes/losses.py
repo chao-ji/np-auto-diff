@@ -40,7 +40,6 @@ class SoftmaxCrossEntropyLoss(base_node.Node):
         labels._shape[:-1], graph)
     self._arguments['labels'] = labels
     self._arguments['logits'] = logits
-    self.increment_num_consumers_for_arguments()
 
   def _forward(self, feed_dict):
     """Compute the forward pass value of the node.
@@ -68,7 +67,8 @@ class SoftmaxCrossEntropyLoss(base_node.Node):
     labels_val = self._arguments['labels'].forward(feed_dict)
     dlogits_val = logits_probs_val - labels_val
     dlogits_val = np.expand_dims(grad_val, -1) * dlogits_val
-    self._arguments['logits'].backward(feed_dict, dlogits_val)
+    grad_dict = {self._arguments['logits']: dlogits_val}
+    return grad_dict
 
   def _get_softmax(self, feed_dict):
     """Utility function. Compute the softmax of logits.
@@ -105,7 +105,6 @@ class SigmoidCrossEntropyLoss(base_node.Node):
         labels._shape, graph)
     self._arguments['labels'] = labels
     self._arguments['logits'] = logits
-    self.increment_num_consumers_for_arguments()
 
   def _forward(self, feed_dict):
     """Compute the forward pass value of the node.
@@ -137,7 +136,8 @@ class SigmoidCrossEntropyLoss(base_node.Node):
     dlogits_val = np.where(logits_val > 0, 1, 0) - labels_val + 1 / (
         self._get_exp_abs(logits_val) + 1) * np.where(logits_val > 0, -1, 1)
     dlogits_val *= grad_val
-    self._arguments['logits'].backward(feed_dict, dlogits_val)
+    grad_dict = {self._arguments['logits']: dlogits_val}
+    return grad_dict
 
   def _get_exp_abs(self, logits_val):
     """Utility function. Computes `exp(abs(.))`.

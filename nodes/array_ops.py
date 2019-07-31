@@ -45,7 +45,6 @@ class MatMul(base_node.Node):
     super(MatMul, self).__init__(shape, graph)
     self._arguments['x'] = x
     self._arguments['y'] = y
-    self.increment_num_consumers_for_arguments()
 
   def _forward(self, feed_dict):
     """Compute the forward pass value of the node.
@@ -71,8 +70,9 @@ class MatMul(base_node.Node):
     y_val = self._arguments['y'].forward(feed_dict)
     dx_val = np.dot(grad_val, y_val.T)
     dy_val = np.dot(x_val.T, grad_val)
-    self._arguments['x'].backward(feed_dict, dx_val)
-    self._arguments['y'].backward(feed_dict, dy_val)
+    grad_dict = {self._arguments['x']: dx_val,
+                 self._arguments['y']: dy_val}
+    return grad_dict
 
 
 class Reshape(base_node.Node):
@@ -98,7 +98,6 @@ class Reshape(base_node.Node):
     super(Reshape, self).__init__(shape, graph)
     self._target_shape = target_shape
     self._arguments['x'] = x
-    self.increment_num_consumers_for_arguments()
 
   def _forward(self, feed_dict):
     """Compute the forward pass value of the node.
@@ -122,7 +121,8 @@ class Reshape(base_node.Node):
     grad_val = self._graph.get_runtime()._bwval[self.name]
     x_val = self._arguments['x'].forward(feed_dict)
     dx_val = np.reshape(grad_val, x_val.shape)
-    self._arguments['x'].backward(feed_dict, dx_val)
+    grad_dict = {self._arguments['x']: dx_val}
+    return grad_dict
 
 
 class _ReductionOp(base_node.Node):
@@ -165,7 +165,6 @@ class ReduceMean(_ReductionOp):
     """
     super(ReduceMean, self).__init__(x, axis, graph)
     self._arguments['x'] = x
-    self.increment_num_consumers_for_arguments()
 
   def _forward(self, feed_dict):
     """Compute the forward pass value of the node.
@@ -193,7 +192,8 @@ class ReduceMean(_ReductionOp):
     expanded_shape = [1 if i in self._axis else d 
         for i, d in enumerate(x_val.shape)] 
     dx_val = np.tile(grad_val.reshape(expanded_shape), rep)
-    self._arguments['x'].backward(feed_dict, dx_val)
+    grad_dict = {self._arguments['x']: dx_val}
+    return grad_dict
 
 
 class ReduceSum(_ReductionOp):
@@ -211,7 +211,6 @@ class ReduceSum(_ReductionOp):
     """
     super(ReduceSum, self).__init__(x, axis, graph)
     self._arguments['x'] = x
-    self.increment_num_consumers_for_arguments()
 
   def _forward(self, feed_dict):
     """Compute the forward pass value of the node.
@@ -238,8 +237,9 @@ class ReduceSum(_ReductionOp):
     expanded_shape = [1 if i in self._axis else d
         for i, d in enumerate(x_val.shape)]
     dx_val = np.tile(grad_val.reshape(expanded_shape), rep)
-    self._arguments['x'].backward(feed_dict, dx_val)
-    
+    grad_dict = {self._arguments['x']: dx_val}
+    return grad_dict   
+
 
 class Pad(base_node.Node):
   """Pad the input tensor in any dimension(s) with constant value. 
@@ -266,7 +266,6 @@ class Pad(base_node.Node):
     self._paddings = paddings
     self._constant_value = constant_value
     self._arguments['x'] = x
-    self.increment_num_consumers_for_arguments()
 
   def _forward(self, feed_dict):
     """Compute the forward pass value of the node.
@@ -295,7 +294,8 @@ class Pad(base_node.Node):
     x_val = self._arguments['x'].forward(feed_dict)
     mask = self._get_mask(x_val.shape, self._paddings)
     dx_val = grad_val[mask]
-    self._arguments['x'].backward(feed_dict, dx_val)
+    grad_dict = {self._arguments['x']: dx_val}
+    return grad_dict   
 
   def _get_mask(self, x_shape, paddings):
     """Get the mask indicating the original contents of input tensor in the
@@ -358,7 +358,6 @@ class Concat(base_node.Node):
     self._axis = axis
     for i, t in enumerate(tensors):
       self._arguments['x_' + str(i)] = t
-    self.increment_num_consumers_for_arguments()
 
   def _forward(self, feed_dict):
     """Compute the forward pass value of the node.
@@ -388,9 +387,10 @@ class Concat(base_node.Node):
     sections = np.cumsum([x_val.shape[self._axis] for x_val in x_vals])[:-1]
     dx_vals = np.split(grad_val, sections, axis=self._axis)
 
+    grad_dict = {}
     for i, dx_val in enumerate(dx_vals):
-      self._arguments['x_' + str(i)].backward(feed_dict, dx_val)
-
+      grad_dict[self._arguments['x_' + str(i)]] = dx_val
+    return grad_dict
 
 class Slice(base_node.Node):
   """Slice out a sub-tensor from an input tensor."""
@@ -422,7 +422,6 @@ class Slice(base_node.Node):
     self._arguments['x'] = x
     self._arguments['begin'] = begin
     self._arguments['sizes'] = sizes
-    self.increment_num_consumers_for_arguments()
 
   def _forward(self, feed_dict):
     """Compute the forward pass value of the node.
@@ -455,7 +454,8 @@ class Slice(base_node.Node):
     dx_val = np.zeros_like(x_val, dtype='float32')
     slices = self._get_slices(begin_val, sizes_val, x_val)  
     dx_val[slices] = grad_val
-    self._arguments['x'].backward(feed_dict, dx_val) 
+    grad_dict = {self._arguments['x']: dx_val}
+    return grad_dict
 
   def _get_slices(self, begin_val, sizes_val, x_val):
     """Utility function. Compute the slice indices.

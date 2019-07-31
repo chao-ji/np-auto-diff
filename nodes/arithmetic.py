@@ -38,7 +38,6 @@ class _BinaryOp(base_node.Node):
     super(_BinaryOp, self).__init__(shape, graph)
     self._arguments['x'] = x
     self._arguments['y'] = y
-    self.increment_num_consumers_for_arguments()
 
   def _compute_shape(self, x_shape, y_shape):
     """Computs the shape of the resulting Node.
@@ -151,8 +150,9 @@ class Add(_BinaryOp):
 
     dx_val = grad_val.sum(axis=reduce_dims_x).reshape(dynamic_x_shape)
     dy_val = grad_val.sum(axis=reduce_dims_y).reshape(dynamic_y_shape)
-    self._arguments['x'].backward(feed_dict, dx_val)
-    self._arguments['y'].backward(feed_dict, dy_val)
+    grad_dict = { self._arguments['x']: dx_val,
+                  self._arguments['y']: dy_val}
+    return grad_dict
 
 
 class Multiply(_BinaryOp):
@@ -199,5 +199,6 @@ class Multiply(_BinaryOp):
     
     dx_val = (grad_val * y_val).sum(axis=reduce_dims_x).reshape(dynamic_x_shape)
     dy_val = (grad_val * x_val).sum(axis=reduce_dims_y).reshape(dynamic_y_shape)
-    self._arguments['x'].backward(feed_dict, dx_val)
-    self._arguments['y'].backward(feed_dict, dy_val)
+    grad_dict = { self._arguments['x']: dx_val,
+                  self._arguments['y']: dy_val}
+    return grad_dict

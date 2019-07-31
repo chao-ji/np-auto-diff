@@ -38,7 +38,6 @@ class Sigmoid(base_node.Node):
     """
     super(Sigmoid, self).__init__(x._shape, graph)
     self._arguments['x'] = x
-    self.increment_num_consumers_for_arguments()
 
   def _forward(self, feed_dict):
     """Compute the forward pass value of the node.
@@ -63,7 +62,8 @@ class Sigmoid(base_node.Node):
     val = val * (1. - val)
     grad_val = self._graph.get_runtime()._bwval[self.name]
     dx_val = grad_val * val
-    self._arguments['x'].backward(feed_dict, dx_val)
+    grad_dict = {self._arguments['x']: dx_val}
+    return grad_dict
 
 
 class Tanh(base_node.Node):
@@ -78,7 +78,6 @@ class Tanh(base_node.Node):
     """
     super(Tanh, self).__init__(x._shape, graph)
     self._arguments['x'] = x
-    self.increment_num_consumers_for_arguments()
 
   def _forward(self, feed_dict):
     """Compute the forward pass value of the node.
@@ -102,7 +101,8 @@ class Tanh(base_node.Node):
     val = self.forward(feed_dict)
     grad_val = self._graph.get_runtime()._bwval[self.name]
     grad_val = grad_val * (1 - val * val)
-    self._arguments['x'].backward(feed_dict, grad_val)
+    grad_dict = {self._arguments['x']: grad_val}
+    return grad_dict
 
 
 class ReLU(base_node.Node):
@@ -117,7 +117,6 @@ class ReLU(base_node.Node):
     """
     super(ReLU, self).__init__(x._shape, graph)
     self._arguments['x'] = x
-    self.increment_num_consumers_for_arguments()
 
   def _forward(self, feed_dict):
     """Compute the forward pass value of the node.
@@ -141,7 +140,8 @@ class ReLU(base_node.Node):
     x_val = self._arguments['x'].forward(feed_dict)
     grad_val = self._graph.get_runtime()._bwval[self.name]
     grad_val[x_val <= 0] = 0
-    self._arguments['x'].backward(feed_dict, grad_val)
+    grad_dict = {self._arguments['x']: grad_val}
+    return grad_dict
 
 
 class LeakyReLU(base_node.Node):
@@ -158,7 +158,6 @@ class LeakyReLU(base_node.Node):
     super(LeakyReLU, self).__init__(x._shape, graph)
     self._arguments['x'] = x
     self._alpha = alpha
-    self.increment_num_consumers_for_arguments()
 
   def _forward(self, feed_dict):
     """Compute the forward pass value of the node.
@@ -182,7 +181,8 @@ class LeakyReLU(base_node.Node):
     x_val = self._arguments['x'].forward(feed_dict)
     grad_val = self._graph.get_runtime()._bwval[self.name]
     grad_val = np.where(x_val <= 0, self._alpha * grad_val, grad_val)
-    self._arguments['x'].backward(feed_dict, grad_val)
+    grad_dict = {self._arguments['x']: grad_val}
+    return grad_dict
 
 
 class Dropout(base_node.Node):
@@ -211,7 +211,6 @@ class Dropout(base_node.Node):
     self._arguments['x'] = x
     self._rate = rate
     self._is_training = is_training
-    self.increment_num_consumers_for_arguments()
 
   def _forward(self, feed_dict):
     """Constructor.
@@ -240,7 +239,8 @@ class Dropout(base_node.Node):
     dx_val = grad_val / (1 - self._rate)
     mask = self._get_mask(grad_val.shape)
     dx_val[mask] = 0.
-    self._arguments['x'].backward(feed_dict, dx_val)
+    grad_dict = {self._arguments['x']: dx_val}
+    return grad_dict
 
   def _get_mask(self, shape):
     """Get the mask that indicates which elements are zeroed.
@@ -319,7 +319,6 @@ class FusedBatchNorm(base_node.Node):
     self._arguments['x'] = x
     self._arguments['scale'] = scale
     self._arguments['offset'] = offset
-    self.increment_num_consumers_for_arguments()
 
     self._arguments['moving_mean'] = moving_mean
     self._arguments['moving_variance'] = moving_variance
@@ -376,14 +375,15 @@ class FusedBatchNorm(base_node.Node):
     d_variance_val = d_variance_val * 2 * (x_val - mean_val)
     dx_val = dx_val + (d_mean_val + d_variance_val) / np.prod(
         [x_val.shape[_] for _ in self._dims]) 
-    self._arguments['x'].backward(feed_dict, dx_val)
 
     d_offset_val = grad_val.sum(axis=self._dims)
-    self._arguments['offset'].backward(feed_dict, d_offset_val)
 
     d_scale_val = self._get_standard_x(x_val, mean_val, variance_val) * grad_val
     d_scale_val = d_scale_val.sum(axis=self._dims)
-    self._arguments['scale'].backward(feed_dict, d_scale_val)
+    grad_dict = {self._arguments['x']: dx_val,
+                 self._arguments['offset']: d_offset_val,
+                 self._arguments['scale']: d_scale_val}
+    return grad_dict
 
   def _get_standard_x(self, x_val, mean_val, variance_val):
     """Center and scale the input tensor `x` to zero-mean and unit variance.
@@ -815,7 +815,6 @@ class Conv2D(_Kernel2D):
     super(Conv2D, self).__init__(shape, strides, padding, graph)
     self._arguments['x'] = x
     self._arguments['kernel'] = kernel
-    self.increment_num_consumers_for_arguments() 
 
   @property
   def input_channels_dim(self):
@@ -914,8 +913,9 @@ class Conv2D(_Kernel2D):
     dx_val = self._dx_patchmat2tensor(
         dx_val_mat, x_val.shape, kernel_height, kernel_width)
 
-    self._arguments['x'].backward(feed_dict, dx_val)
-    self._arguments['kernel'].backward(feed_dict, dkernel_val)
+    grad_dict = {self._arguments['x']: dx_val,
+                 self._arguments['kernel']: dkernel_val}
+    return grad_dict    
 
 
 class Conv2DTranspose(Conv2D):
@@ -996,8 +996,10 @@ class Conv2DTranspose(Conv2D):
     dx_val = dx_val_mat.reshape(
         (out_height, out_width, batch, out_channels)).transpose((2, 0, 1, 3))
 
-    self._arguments['x'].backward(feed_dict, dx_val)    
-    self._arguments['kernel'].backward(feed_dict, dkernel_val)
+    grad_dict = {self._arguments['x']: dx_val,
+                 self._arguments['kernel']: dkernel_val}
+    return grad_dict
+
 
   def _get_input_spatial_size(self, x_val_shape, kernel_height, kernel_width):
     """Compute the height and with of the output tensor of Conv2dTranspose.
@@ -1077,7 +1079,6 @@ class MaxPool2D(_Kernel2D):
     self._kernel_size = kernel_size
     self._pad_value = np.nan
     self._arguments['x'] = x
-    self.increment_num_consumers_for_arguments()
 
   @property
   def input_channels_dim(self):
@@ -1140,7 +1141,9 @@ class MaxPool2D(_Kernel2D):
         in_channels * self._kernel_size[0] * self._kernel_size[1]))
     dx_val = self._dx_patchmat2tensor(
         dx_val_mat, x_val.shape, self._kernel_size[0], self._kernel_size[1])
-    self._arguments['x'].backward(feed_dict, dx_val)
+    grad_dict = {self._arguments['x']: dx_val}
+    return grad_dict
+
 
   def _get_argmax(self, x_val_mat):
     """Get the argmax index of each patch of the input tensor from which the
@@ -1188,7 +1191,6 @@ class AvgPool2D(_Kernel2D):
     self._kernel_size = kernel_size    
     self._pad_value = np.nan 
     self._arguments['x'] = x
-    self.increment_num_consumers_for_arguments()
 
   @property
   def input_channels_dim(self):
@@ -1251,7 +1253,8 @@ class AvgPool2D(_Kernel2D):
         in_channels * self._kernel_size[0] * self._kernel_size[1]))
     dx_val = self._dx_patchmat2tensor(
         dx_val_mat, x_val.shape, self._kernel_size[0], self._kernel_size[1])
-    self._arguments['x'].backward(feed_dict, dx_val)
+    grad_dict = {self._arguments['x']: dx_val}
+    return grad_dict
 
 
 class L2Norm(base_node.Node):
@@ -1267,7 +1270,6 @@ class L2Norm(base_node.Node):
     super(L2Norm, self).__init__((), graph)
     self._scalar = scalar
     self._arguments['x'] = x
-    self.increment_num_consumers_for_arguments()
 
   def _forward(self, feed_dict):
     """Compute the forward pass value of the node.
@@ -1291,4 +1293,5 @@ class L2Norm(base_node.Node):
     x_val = self._arguments['x'].forward(feed_dict)
     grad_val = self._graph.get_runtime()._bwval[self.name]
     dx_val = self._scalar * grad_val * x_val
-    self._arguments['x'].backward(feed_dict, dx_val)
+    grad_dict = {self._arguments['x']: dx_val}
+    return grad_dict

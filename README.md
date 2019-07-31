@@ -52,7 +52,11 @@ One can build a wide range of neural network architectures, from [logistic regre
 * Represent neural network architecture as a DAG, where each node corresponds to an operation (e.g. Conv2D, arithmetic op, reshape, etc.)
 * Separate the construction of the neural network architecture (`Graph`, like the graph in TensorFlow) from the actual computation (`Runtime`, the equivalent of `Session` in TensorFlow). The actual value of nodes are stored in a `Runtime` object, and are recomputed in each forward-backward-cycle.
 * Computation of Forward pass and Backward pass are expressed as vectorized (i.e. broadcasting) Numpy operations.
+* In the forward pass, the nodes in the DAG are traversed in the order of depth-first-search (i.e. using recursive function calls)
+* In the backward pass, the nodes in the DAG are traversed in the order of breadth-first-search.
 
+## Updates
+* **07/30/2019**, the order of nodes traversal in the backward pass was changed from depth-first-search to breadth-first-search. This eliminates the need to keep track of the number of downstream nodes that have backpropped their gradients when computing the backward pass.
 
 
 
@@ -65,7 +69,7 @@ One can build a wide range of neural network architectures, from [logistic regre
 
 
 ## Installation
-Note that the only third party library dependency is NumPy. And this framework is tested in Python3 (some Python2 syntaxes are not compatible).
+Note that installation is extremely simple, because it requires no third party libraries but NumPy. And this framework is tested in Python3 (some Python2 syntaxes are not compatible).
 
 After cloning the repository,
 

@@ -48,10 +48,6 @@ class Placeholder(base_node.Node):
     """
     return to_numpy(feed_dict[self])
 
-  def _backward(self, feed_dict):
-    """Dummy method."""
-    pass
-
 
 class Variable(Placeholder):
   """Variable stores the value of a node that still persists outside a 
@@ -140,7 +136,3 @@ class Constant(base_node.Node):
     """Compute the value of the variable.
     """
     return self._val
-
-  def _backward(self, _not_used=None):
-    """Dummy method."""
-    pass

@@ -154,7 +154,6 @@ class Node(object):
         else TensorShape(*shape))
     self._graph = graph
     self._arguments = dict()
-    self._num_consumers = 0
 
     self._graph.add_node(self)
 
@@ -188,24 +187,6 @@ class Node(object):
     if not self._shape.compatible_with(val.shape):
       raise ValueError('%s: static shape (%s) and dynamic shape (%s) are '
           'not compatible.' % (self.name, self._shape, val.shape))
-
-  def increment_num_consumers(self):
-    """Increment the num of consumers.
-    """
-    self._num_consumers += 1
-
-  def increment_num_consumers_for_arguments(self):
-    """Increment the num of consumers for all argument nodes.
-    """
-    for k in self._arguments.keys():
-      self._arguments[k].increment_num_consumers()
-
-  def set_num_consumers(self, val):
-    """Set the number of consumer nodes (i.e. descendents) of the current node.
-    """
-    if not isinstance(val, int) or val < 0:
-      raise ValueError('`val` must be non-negative integer.')
-    self._num_consumers = val
 
   def forward(self, feed_dict=None):
     """Compute the forward pass value of the node, or retrieve that value if 
@@ -249,41 +230,34 @@ class Node(object):
         backpropped from one of its consumer node. If None, defaults to an
         all-one array with shape `self._shape`.
     """
-    if ((self._graph.get_runtime().backprop_initiated(self) and 
-        self._graph.get_runtime().backprop_finished(self)) or 
-        self._graph.get_runtime().grad_stopped(self)):
-      # full gradient w.r.t. the current node is already computed,
-      # or gradient propogation is stopped at the current node. 
-      return
+    if self._graph.get_runtime().grad_stopped(self):
+      return 
 
-    if self.name not in self._graph.get_runtime()._bwval:
-      # the first time one of the consumers calls `backward()` of current node.
-      val = self.forward(feed_dict)
-      self._graph.get_runtime()._bwval[self.name] = np.zeros(
-          val.shape, dtype=np.float32)
-    
+    val = self.forward(feed_dict)
     if bwval is None:
-      bwval = np.ones(
-          self._graph.get_runtime()._bwval[self.name].shape, dtype=np.float32)
+      bwval = np.ones(val.shape, dtype=np.float32)
     else:
-      bwval = to_numpy(bwval) 
+      bwval = to_numpy(bwval)
       self.check_dynamic_shape(bwval)
 
-    self._graph.get_runtime()._bwval[self.name] += bwval
-    if self._num_consumers != 0:
-      # increment backprop count of the current node if it has >0 consumer node.
-      self._graph.get_runtime().increment_backprop_count(self)
+    self._graph.get_runtime()._bwval[self.name] = bwval
 
-    if self._graph.get_runtime().backprop_finished(self):
-      self._backward(feed_dict)
+    queue = [self]
+    while queue:
+      node = queue.pop()
+      if not hasattr(node, '_backward'):
+        continue
 
-  @abstractmethod  
-  def _backward(self):
-    """Retrieve the gradient value of the current node. Then compute and 
-    backprop the gradient w.r.t. the argument nodes of the current node.
+      grad_dict = node._backward(feed_dict)
+      for child, grad_val in grad_dict.items():
+        if self._graph.get_runtime().grad_stopped(child):
+          continue
 
-    To be implemented by subclasses.
-    """
+        if child.name not in self._graph.get_runtime()._bwval:
+          self._graph.get_runtime()._bwval[child.name] = grad_val 
+          queue.append(child) 
+        else:
+          self._graph.get_runtime()._bwval[child.name] += grad_val
 
   def _convert_arithmetic_operand(self, other):
     """Convert arithmetic operand to appropriate type.
