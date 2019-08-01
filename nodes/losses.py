@@ -61,6 +61,10 @@ class SoftmaxCrossEntropyLoss(base_node.Node):
 
     Args: 
       feed_dict: a dict mapping from a `Node` instance to a numpy array.
+
+    Returns:
+      grad_dict: a dict mapping from a `Node` instance to a numpy array, holding
+        the gradient w.r.t. `self`'s arguments that pass through `self`.
     """
     grad_val = self._graph.get_runtime()._bwval[self.name]
     logits_probs_val = self._get_softmax(feed_dict)
@@ -128,6 +132,10 @@ class SigmoidCrossEntropyLoss(base_node.Node):
 
     Args: 
       feed_dict: a dict mapping from a `Node` instance to a numpy array.
+
+    Returns:
+      grad_dict: a dict mapping from a `Node` instance to a numpy array, holding
+        the gradient w.r.t. `self`'s arguments that pass through `self`.
     """
     grad_val = self._graph.get_runtime()._bwval[self.name]
     logits_val = self._arguments['logits'].forward(feed_dict)

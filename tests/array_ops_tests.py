@@ -317,7 +317,7 @@ class TestArrayOps(unittest.TestCase):
       self._print_parameters_reduction_op(shape, dims)
       rst_val, rs_val, dat_val, da_val = reduce_mean_case(shape, dims)
       self.assertTrue((rst_val == rs_val).all())
-      self.assertTrue(((dat_val - da_val) <= 1e-8).all())
+      self.assertTrue(((dat_val - da_val) <= 1e-6).all())
     sess.close()
 
   def test_pad(self):

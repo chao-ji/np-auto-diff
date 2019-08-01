@@ -138,6 +138,10 @@ class Add(_BinaryOp):
 
     Args: 
       feed_dict: a dict mapping from a `Node` instance to a numpy array.
+
+    Returns:
+      grad_dict: a dict mapping from a `Node` instance to a numpy array, holding
+        the gradient w.r.t. `self`'s arguments that pass through `self`.
     """
     grad_val = self._graph.get_runtime()._bwval[self.name]
     
@@ -185,6 +189,10 @@ class Multiply(_BinaryOp):
 
     Args: 
       feed_dict: a dict mapping from a `Node` instance to a numpy array.
+
+    Returns:
+      grad_dict: a dict mapping from a `Node` instance to a numpy array, holding
+        the gradient w.r.t. `self`'s arguments that pass through `self`.
     """
     grad_val = self._graph.get_runtime()._bwval[self.name]
 
@@ -201,4 +209,55 @@ class Multiply(_BinaryOp):
     dy_val = (grad_val * x_val).sum(axis=reduce_dims_y).reshape(dynamic_y_shape)
     grad_dict = { self._arguments['x']: dx_val,
                   self._arguments['y']: dy_val}
+    return grad_dict
+
+
+class Subtract(_BinaryOp):
+  """Subtract operation. Supports broadcasting."""
+  def __init__(self, x, y, graph=None):
+    """Constructor.
+
+    Args:
+      x: a Node instance, the first operand.
+      y: a Node instance, the second operand.
+      graph: a RunTime instance.
+    """
+    super(Subtract, self).__init__(x, y, graph)
+
+  def _forward(self, feed_dict):
+    """Compute the forward pass value of the node.
+
+    Args: 
+      feed_dict: a dict mapping from a `Node` instance to a numpy array.
+
+    Returns:
+      the forward pass value of the node.
+    """
+    return (self._arguments['x'].forward(feed_dict) -
+        self._arguments['y'].forward(feed_dict))
+
+  def _backward(self, feed_dict):
+    """Retrieve the gradient value of the current node. Then compute and 
+    backprop the gradient w.r.t. the argument nodes of the current node.
+
+    Args: 
+      feed_dict: a dict mapping from a `Node` instance to a numpy array.
+
+    Returns:
+      grad_dict: a dict mapping from a `Node` instance to a numpy array, holding
+        the gradient w.r.t. `self`'s arguments that pass through `self`.
+    """
+    grad_val = self._graph.get_runtime()._bwval[self.name]
+
+    dynamic_x_shape = self._arguments['x'].forward(feed_dict).shape
+    dynamic_y_shape = self._arguments['y'].forward(feed_dict).shape
+    dynamic_shape = self.forward(feed_dict).shape
+
+    reduce_dims_x, reduce_dims_y = self._compute_reduce_dims(
+        dynamic_x_shape, dynamic_y_shape, dynamic_shape)
+
+    dx_val = grad_val.sum(axis=reduce_dims_x).reshape(dynamic_x_shape)
+    dy_val = grad_val.sum(axis=reduce_dims_y).reshape(dynamic_y_shape)
+    grad_dict = { self._arguments['x']: dx_val,
+                  self._arguments['y']: -dy_val}
     return grad_dict

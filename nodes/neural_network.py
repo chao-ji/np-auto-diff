@@ -57,6 +57,10 @@ class Sigmoid(base_node.Node):
 
     Args: 
       feed_dict: a dict mapping from a `Node` instance to a numpy array.
+
+    Returns:
+      grad_dict: a dict mapping from a `Node` instance to a numpy array, holding
+        the gradient w.r.t. `self`'s arguments that pass through `self`.
     """
     val = self.forward(feed_dict)
     val = val * (1. - val)
@@ -97,6 +101,10 @@ class Tanh(base_node.Node):
 
     Args: 
       feed_dict: a dict mapping from a `Node` instance to a numpy array.
+
+    Returns:
+      grad_dict: a dict mapping from a `Node` instance to a numpy array, holding
+        the gradient w.r.t. `self`'s arguments that pass through `self`.
     """
     val = self.forward(feed_dict)
     grad_val = self._graph.get_runtime()._bwval[self.name]
@@ -136,6 +144,10 @@ class ReLU(base_node.Node):
 
     Args: 
       feed_dict: a dict mapping from a `Node` instance to a numpy array.
+
+    Returns:
+      grad_dict: a dict mapping from a `Node` instance to a numpy array, holding
+        the gradient w.r.t. `self`'s arguments that pass through `self`.
     """
     x_val = self._arguments['x'].forward(feed_dict)
     grad_val = self._graph.get_runtime()._bwval[self.name]
@@ -177,6 +189,10 @@ class LeakyReLU(base_node.Node):
 
     Args: 
       feed_dict: a dict mapping from a `Node` instance to a numpy array.
+
+    Returns:
+      grad_dict: a dict mapping from a `Node` instance to a numpy array, holding
+        the gradient w.r.t. `self`'s arguments that pass through `self`.
     """
     x_val = self._arguments['x'].forward(feed_dict)
     grad_val = self._graph.get_runtime()._bwval[self.name]
@@ -234,6 +250,10 @@ class Dropout(base_node.Node):
 
     Args: 
       feed_dict: a dict mapping from a `Node` instance to a numpy array.
+
+    Returns:
+      grad_dict: a dict mapping from a `Node` instance to a numpy array, holding
+        the gradient w.r.t. `self`'s arguments that pass through `self`.
     """
     grad_val = self._graph.get_runtime()._bwval[self.name]
     dx_val = grad_val / (1 - self._rate)
@@ -357,6 +377,10 @@ class FusedBatchNorm(base_node.Node):
 
     Args: 
       feed_dict: a dict mapping from a `Node` instance to a numpy array.
+
+    Returns:
+      grad_dict: a dict mapping from a `Node` instance to a numpy array, holding
+        the gradient w.r.t. `self`'s arguments that pass through `self`.
     """
     grad_val = self._graph.get_runtime()._bwval[self.name]
     x_val = self._arguments['x'].forward(feed_dict)
@@ -894,6 +918,10 @@ class Conv2D(_Kernel2D):
 
     Args: 
       feed_dict: a dict mapping from a `Node` instance to a numpy array.
+
+    Returns:
+      grad_dict: a dict mapping from a `Node` instance to a numpy array, holding
+        the gradient w.r.t. `self`'s arguments that pass through `self`.
     """
     x_val = self._arguments['x'].forward(feed_dict)
     kernel_val = self._arguments['kernel'].forward(feed_dict)
@@ -974,6 +1002,10 @@ class Conv2DTranspose(Conv2D):
 
     Args: 
       feed_dict: a dict mapping from a `Node` instance to a numpy array.
+
+    Returns:
+      grad_dict: a dict mapping from a `Node` instance to a numpy array, holding
+        the gradient w.r.t. `self`'s arguments that pass through `self`.
     """
     x_val = self._arguments['x'].forward(feed_dict)
     kernel_val = self._arguments['kernel'].forward(feed_dict)
@@ -1116,6 +1148,10 @@ class MaxPool2D(_Kernel2D):
 
     Args: 
       feed_dict: a dict mapping from a `Node` instance to a numpy array.
+
+    Returns:
+      grad_dict: a dict mapping from a `Node` instance to a numpy array, holding
+        the gradient w.r.t. `self`'s arguments that pass through `self`.
     """
     x_val = self._arguments['x'].forward(feed_dict)
 
@@ -1227,6 +1263,10 @@ class AvgPool2D(_Kernel2D):
 
     Args: 
       feed_dict: a dict mapping from a `Node` instance to a numpy array.
+
+    Returns:
+      grad_dict: a dict mapping from a `Node` instance to a numpy array, holding
+        the gradient w.r.t. `self`'s arguments that pass through `self`.
     """
     x_val = self._arguments['x'].forward(feed_dict)
 
@@ -1289,6 +1329,10 @@ class L2Norm(base_node.Node):
 
     Args: 
       feed_dict: a dict mapping from a `Node` instance to a numpy array.
+
+    Returns:
+      grad_dict: a dict mapping from a `Node` instance to a numpy array, holding
+        the gradient w.r.t. `self`'s arguments that pass through `self`.
     """
     x_val = self._arguments['x'].forward(feed_dict)
     grad_val = self._graph.get_runtime()._bwval[self.name]

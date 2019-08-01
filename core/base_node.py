@@ -109,10 +109,11 @@ class Node(object):
   To kick off the forward and backward pass, call `self.forward()` and 
   `self.backward`, respectively. 
 
-  Subclasses (i.e. specific node types) must implement the abstract methods
-  `_forward()` and `_backward()`. They define the subclass-specific logic to 
-  carry out the forward and backward pass, and they are called internally by 
-  `forward()` and `backward()`.
+  Subclasses (i.e. specific node types) must implement both `_forward()` and 
+  `_backward()` (the only exception is that Nodes with 0 in-degree, e.g. 
+  Constant, Variable, Placeholder, only needs to implement `_forward()`). They 
+  define the subclass-specific logic to carry out the forward and backward pass, 
+  and they are called internally by `forward()` and `backward()`.
   
 
   The example below explains the logic to be implemented in `_forward()` 
@@ -129,16 +130,10 @@ class Node(object):
   The `_forward()` method of `a` must implement the addition operation, which 
   asks for the values of `b` and `c` by calling `b.forward()` and `c.forward()`.
 
-  In the backward pass, `a`'s gradient value is first computed by calling 
-  `a.backward(da_d_val)` and `a.backward(da_e_val)` in the `_backward()` method
-   of `d` and `e`, where `da_d_val` and `da_e_val` are the gradient w.r.t. `a` 
-  that goes through `d` and `e`. Note that the order does not matter, because 
-  `a`'s gradient is simply accumulated.
-
-  Given `a`'s full gradient value `grad_val` (i.e. the accumulation of gradient
-  from `d` and `e`) computed, the `_backward()` method of `a` computes `db_val` 
-  and `dc_val`, i.e. the gradient w.r.t. `b` and `c`, and backprops them by 
-  calling `b.backward(db_val)` amd `c.backward(dc_val)`, respectively.
+  This `_backward()` method of `a` computes the gradient w.r.t `b` and `c` that
+  pass through `a`. When it's called, `a`'s gradient (da_val = da_d_val + 
+  da_e_val) should have already been computed. This is guaranteed by traversing
+  the nodes in BFS order.
   """
   __metaclass__ = ABCMeta
 
@@ -212,17 +207,19 @@ class Node(object):
     """
 
   def backward(self, feed_dict, bwval=None):
-    """Pass gradient from the consumer node back to the current node (i.e. the
-    argument node). Example:
+    """Backpropogates gradient to all Nodes reachable from the current node 
+    `self`. Example:
 
-    `argument.backward(feed_dict, bwval)`
+    `argument.backward(feed_dict, bwval)`  
 
-    backprops `bwval`, i.e. the gradient w.r.t `argument` by its consumer node.
+    The Nodes are traversed in the order of BFS, i.e., Nodes with smaller 
+    distances to `self` are traversed before Nodes with larger distances.
 
-
-    When *all* consumer node of the current node has already backpropped, the 
-    current node calls its `_backward()` method to backprop its gradient down
-    to its argument nodes. 
+    When a Node is dequeued, its gradient should've already been computed. Then
+    tt calls its `_backward` method, which computes the gradient w.r.t to all 
+    its child nodes (e.g. for a = b + c, b and c are child node of a) that pass 
+    through `self`. It this way, it is easy to accumulate gradients backpropped
+    from different paths.
 
     Args:
       feed_dict: a dict mapping from a `Node` instance to a numpy array.
@@ -288,3 +285,19 @@ class Node(object):
   def __rmul__(self, other):
     other = self._convert_arithmetic_operand(other)
     return exports.multiply(other, self)
+
+  def __sub__(self, other):
+    other = self._convert_arithmetic_operand(other)
+    return exports.subtract(self, other)
+
+  def __rsub__(self, other):
+    other = self._convert_arithmetic_operand(other)
+    return exports.add(other, self)
+
+  def __pos__(self):
+    zero = self._convert_arithmetic_operand(0)
+    return exports.add(zero, self)
+
+  def __neg__(self):
+    zero = self._convert_arithmetic_operand(0) 
+    return exports.subtract(zero, self)

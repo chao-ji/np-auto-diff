@@ -86,6 +86,9 @@ def add(x, y):
   graph = get_default_graph()
   return arithmetic.Add(x=x, y=y, graph=graph)
 
+def subtract(x, y):
+  graph = get_default_graph()
+  return arithmetic.Subtract(x=x, y=y, graph=graph)
 
 def multiply(x, y):
   """Performs multiply operation.

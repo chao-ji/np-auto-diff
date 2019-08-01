@@ -64,6 +64,10 @@ class MatMul(base_node.Node):
 
     Args: 
       feed_dict: a dict mapping from a `Node` instance to a numpy array.
+
+    Returns:
+      grad_dict: a dict mapping from a `Node` instance to a numpy array, holding
+        the gradient w.r.t. `self`'s arguments that pass through `self`.
     """
     grad_val = self._graph.get_runtime()._bwval[self.name]
     x_val = self._arguments['x'].forward(feed_dict)
@@ -117,6 +121,10 @@ class Reshape(base_node.Node):
 
     Args: 
       feed_dict: a dict mapping from a `Node` instance to a numpy array.
+
+    Returns:
+      grad_dict: a dict mapping from a `Node` instance to a numpy array, holding
+        the gradient w.r.t. `self`'s arguments that pass through `self`.
     """
     grad_val = self._graph.get_runtime()._bwval[self.name]
     x_val = self._arguments['x'].forward(feed_dict)
@@ -183,6 +191,10 @@ class ReduceMean(_ReductionOp):
 
     Args: 
       feed_dict: a dict mapping from a `Node` instance to a numpy array.
+
+    Returns:
+      grad_dict: a dict mapping from a `Node` instance to a numpy array, holding
+        the gradient w.r.t. `self`'s arguments that pass through `self`.
     """
     x_val = self._arguments['x'].forward(feed_dict)
     grad_val = self._graph.get_runtime()._bwval[self.name] / np.prod(
@@ -229,6 +241,10 @@ class ReduceSum(_ReductionOp):
 
     Args: 
       feed_dict: a dict mapping from a `Node` instance to a numpy array.
+
+    Returns:
+      grad_dict: a dict mapping from a `Node` instance to a numpy array, holding
+        the gradient w.r.t. `self`'s arguments that pass through `self`.
     """
     x_val = self._arguments['x'].forward(feed_dict)
     grad_val = self._graph.get_runtime()._bwval[self.name]
@@ -289,6 +305,10 @@ class Pad(base_node.Node):
 
     Args: 
       feed_dict: a dict mapping from a `Node` instance to a numpy array.
+
+    Returns:
+      grad_dict: a dict mapping from a `Node` instance to a numpy array, holding
+        the gradient w.r.t. `self`'s arguments that pass through `self`.
     """
     grad_val = self._graph.get_runtime()._bwval[self.name]
     x_val = self._arguments['x'].forward(feed_dict)
@@ -379,6 +399,10 @@ class Concat(base_node.Node):
 
     Args: 
       feed_dict: a dict mapping from a `Node` instance to a numpy array.
+
+    Returns:
+      grad_dict: a dict mapping from a `Node` instance to a numpy array, holding
+        the gradient w.r.t. `self`'s arguments that pass through `self`.
     """
     grad_val = self._graph.get_runtime()._bwval[self.name]
     x_vals = [self._arguments['x_' + str(i)].forward(feed_dict)
@@ -445,6 +469,10 @@ class Slice(base_node.Node):
 
     Args: 
       feed_dict: a dict mapping from a `Node` instance to a numpy array.
+
+    Returns:
+      grad_dict: a dict mapping from a `Node` instance to a numpy array, holding
+        the gradient w.r.t. `self`'s arguments that pass through `self`.
     """
     grad_val = self._graph.get_runtime()._bwval[self.name]
     x_val = self._arguments['x'].forward(feed_dict)
