@@ -33,8 +33,8 @@ IN_CHANNELS = 1, 2
 OUT_CHANNELS = 1, 3 
 STRIDES = (1, 1), (2, 2)
 PADDING = 'SAME', 'VALID'
-
-
+tf.compat.v1.disable_v2_behavior()
+tf = tf.compat.v1
 def conv2d_case(batch, 
                 input_size, 
                 kernel_size, 

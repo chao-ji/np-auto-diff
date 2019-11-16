@@ -48,8 +48,8 @@ SLICE_CASE_LIST = [
   [(3, 5, 9), (0, 1, 2), (3, 2, 4)], [(3, 5, 9), (0, 1, 2), (-1, -1, -1)],
   [(2, 4, 6, 8), (1, 2, 3, 4), (-1, -1, -1, -1)],
 ] 
-
-
+tf.compat.v1.disable_v2_behavior()
+tf = tf.compat.v1
 def enum_subshapes(shape, unique=True):
   if len(shape) <= 1:
     return [tuple(shape)] 

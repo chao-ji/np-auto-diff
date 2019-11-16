@@ -197,12 +197,23 @@ class ReduceMean(_ReductionOp):
         the gradient w.r.t. `self`'s arguments that pass through `self`.
     """
     x_val = self._arguments['x'].forward(feed_dict)
+#    grad_val = self._graph.get_runtime()._bwval[self.name] / np.prod(
+#        [x_val.shape[i] for i in self._axis])
     grad_val = self._graph.get_runtime()._bwval[self.name] / np.prod(
-        [x_val.shape[i] for i in self._axis])
+        np.array(x_val.shape)[np.array(self._axis)])
 
-    rep = [d if i in self._axis else 1 for i, d in enumerate(x_val.shape)]
-    expanded_shape = [1 if i in self._axis else d 
-        for i, d in enumerate(x_val.shape)] 
+    isin = np.isin(np.arange(x_val.ndim), self._axis)
+
+#    rep = [d if i in self._axis else 1 for i, d in enumerate(x_val.shape)]
+    rep = np.where(isin, x_val.shape, 1)
+
+
+#    expanded_shape = [1 if i in self._axis else d 
+#        for i, d in enumerate(x_val.shape)] 
+
+    expanded_shape = np.where(isin, 1, x_val.shape)  
+
+
     dx_val = np.tile(grad_val.reshape(expanded_shape), rep)
     grad_dict = {self._arguments['x']: dx_val}
     return grad_dict
@@ -249,9 +260,14 @@ class ReduceSum(_ReductionOp):
     x_val = self._arguments['x'].forward(feed_dict)
     grad_val = self._graph.get_runtime()._bwval[self.name]
 
-    rep = [d if i in self._axis else 1 for i, d in enumerate(x_val.shape)]
-    expanded_shape = [1 if i in self._axis else d
-        for i, d in enumerate(x_val.shape)]
+#    rep = [d if i in self._axis else 1 for i, d in enumerate(x_val.shape)]
+#    expanded_shape = [1 if i in self._axis else d
+#        for i, d in enumerate(x_val.shape)]
+    isin = np.isin(np.arange(x_val.ndim), self._axis)
+    rep = np.where(isin, x_val.shape, 1)
+    expanded_shape = np.where(isin, 1, x_val.shape)                                       
+
+
     dx_val = np.tile(grad_val.reshape(expanded_shape), rep)
     grad_dict = {self._arguments['x']: dx_val}
     return grad_dict   
@@ -390,6 +406,7 @@ class Concat(base_node.Node):
     """
     x_vals = [self._arguments['x_' + str(i)].forward(feed_dict)
         for i in range(len(self._arguments))]
+
     val = np.concatenate(x_vals, axis=self._axis) 
     return val
 
