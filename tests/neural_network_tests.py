@@ -26,6 +26,11 @@ import tensorflow as tf
 import autodiff as ad
 from test_utils import get_combinations
 
+if tf.__version__.split('.')[0] == '2':
+  tf.compat.v1.disable_v2_behavior()
+  tf = tf.compat.v1
+
+
 BATCH = 1, 2
 INPUT_SIZE = (1, 1), (3, 3), (16, 16), (16, 25) 
 KERNEL_SIZE = (1, 1), (2, 2), (3, 3), (3, 6)
@@ -33,8 +38,7 @@ IN_CHANNELS = 1, 2
 OUT_CHANNELS = 1, 3 
 STRIDES = (1, 1), (2, 2)
 PADDING = 'SAME', 'VALID'
-tf.compat.v1.disable_v2_behavior()
-tf = tf.compat.v1
+
 def conv2d_case(batch, 
                 input_size, 
                 kernel_size, 

@@ -28,6 +28,10 @@ from test_utils import get_subsets
 from test_utils import get_combinations
 
 
+if tf.__version__.split('.')[0] == '2':
+  tf.compat.v1.disable_v2_behavior()
+  tf = tf.compat.v1
+
 SHAPE_LIST = [(), (1,), (2,), (1, 3), (1, 1, 1), (5, 1, 2, 3), (7, 4, 2, 3, 2)]
 
 CONCAT_CASE_LIST = [
@@ -48,8 +52,7 @@ SLICE_CASE_LIST = [
   [(3, 5, 9), (0, 1, 2), (3, 2, 4)], [(3, 5, 9), (0, 1, 2), (-1, -1, -1)],
   [(2, 4, 6, 8), (1, 2, 3, 4), (-1, -1, -1, -1)],
 ] 
-tf.compat.v1.disable_v2_behavior()
-tf = tf.compat.v1
+
 def enum_subshapes(shape, unique=True):
   if len(shape) <= 1:
     return [tuple(shape)] 

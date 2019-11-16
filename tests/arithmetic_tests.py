@@ -26,6 +26,11 @@ import numpy as np
 import autodiff as ad
 from test_utils import get_combinations
 
+if tf.__version__.split('.')[0] == '2':
+  tf.compat.v1.disable_v2_behavior()
+  tf = tf.compat.v1
+
+
 SHAPES = [(), 
           (1,), (5,), 
           (1, 1), (1, 2), (4, 1), (2, 3), 
