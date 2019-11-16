@@ -397,8 +397,6 @@ class FusedBatchNorm(base_node.Node):
     dx_val = d_standard_x_val * np.power(variance_val + self._epsilon, -0.5)
 
     d_variance_val = d_variance_val * 2 * (x_val - mean_val)
-#    dx_val = dx_val + (d_mean_val + d_variance_val) / np.prod(
-#        [x_val.shape[_] for _ in self._dims]) 
 
     dx_val = dx_val + (d_mean_val + d_variance_val) / np.prod(
         np.array(x_val.shape)[np.array(self._dims)])
@@ -574,12 +572,6 @@ class _Kernel2D(base_node.Node):
           x_val_shape, kernel_height, kernel_width)
       _, in_height_pad, in_width_pad, _ = x_pad_shape
 
-#      img_col_index = np.array([(h, w, h_index, w_index)
-#          for h_index, h in enumerate(
-#              np.arange(0, in_height_pad - kernel_height + 1, stride_height))
-#          for w_index, w in enumerate(
-#              np.arange(0, in_width_pad - kernel_width + 1, stride_width))])
-
       h_col_indices = np.arange(
           0, in_height_pad - kernel_height + 1, stride_height)
       w_col_indices = np.arange(
@@ -720,9 +712,6 @@ class _Kernel2D(base_node.Node):
       img_col_index_val = self._get_img_col_index(
           x_val.shape, kernel_height, kernel_width)
       x_val = self._pad_x(x_val, kernel_height, kernel_width)
-
-#      tmp = [x_val[:, h:h+kernel_height, w:w+kernel_width, :].transpose(
-#          0, 3, 1, 2).reshape((batch, -1)) for h, w, _, _ in img_col_index_val]
 
       def func(indices):
         h, w = indices
