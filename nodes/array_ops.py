@@ -98,7 +98,15 @@ class Reshape(base_node.Node):
       raise ValueError('shape must contain integers >= -1.')
     if target_shape.count(-1) > 1:
       raise ValueError('shape must not contain more that one -1\'s.')
-    shape = [i if i != -1 else None for i in target_shape]
+
+    x_size = None if None in x.shape else np.prod(list(x.shape))
+    target_size = np.prod(target_shape)
+    if -1 in target_shape:
+      target_size /= -1
+
+    shape = [i if i != -1 else 
+        (None if x_size is None else int(x_size / target_size)) 
+            for i in target_shape]
     super(Reshape, self).__init__(shape, graph)
     self._target_shape = target_shape
     self._arguments['x'] = x

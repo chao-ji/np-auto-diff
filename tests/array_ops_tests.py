@@ -75,7 +75,11 @@ def reshape_case(old_shape, new_shape):
   # tf
   at = tf.convert_to_tensor(av)
   rst = tf.reshape(at, new_shape)
-  gv = np.random.randint(-5, 5, size=new_shape).astype(np.float32)
+
+  # turn the wildcard -1 into real value
+  gv_new_shape = [int(-np.prod(old_shape) / np.prod(new_shape)) 
+      if s == -1 else s for s in new_shape]
+  gv = np.random.randint(-5, 5, size=gv_new_shape).astype(np.float32)
 
   rst_val = rst.eval()
   grad = tf.gradients(rst, [at], gv)
@@ -245,6 +249,12 @@ class TestArrayOps(unittest.TestCase):
     new_shapes = []
     for old_shape in SHAPE_LIST:
       subshapes = enum_subshapes(old_shape)
+
+      # add the new shapes that contain the wildcard -1 for reshaping
+      minus_one = [subshape[:i] + (-1,) + subshape[i + 1:] 
+          for subshape in subshapes for i in range(len(subshape))]
+      subshapes = subshapes + minus_one
+
       old_shapes.extend([old_shape] * len(subshapes))
       new_shapes.extend(subshapes)
     return old_shapes, new_shapes
