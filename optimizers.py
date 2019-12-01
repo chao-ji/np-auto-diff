@@ -166,25 +166,33 @@ class RMSPropOptimizer(Optimizer):
   def __init__(self, **params):
     self._params = params
     self._params_str = ', '.join(['%s=%s' % (k, v) for k, v in params.items()
-        if k in ('alpha', 'decay', 'epsilon')])
+        if k in ('alpha', 'rho', 'momentum', 'epsilon')])
 
-    self._ms = None
+    self._mean_square = None
+    self._moment = None 
 
-  def _initialize_mean_square(self, grads_and_vars):
-    mean_square = dict([(var.name, np.zeros(var.shape._raw_shape)) 
+  def _initialize_moments(self, grads_and_vars):
+    moments = dict([(var.name, np.zeros(var.shape._raw_shape)) 
         for _, var in grads_and_vars])
-    return mean_square
+    return moments
 
   def apply_gradients(self, grads_and_vars):
-    alpha, decay, epsilon = (self._params['alpha'], 
-                             self._params['decay'], 
-                             self._params['epsilon'])
+    alpha, rho, momentum, epsilon = (self._params['alpha'], 
+                                     self._params['rho'],
+                                     self._params['momentum'], 
+                                     self._params['epsilon'])
 
-    ms = self._ms if self._ms is not None else self._initialize_mean_square(
-        grads_and_vars)
+    mean_square = (self._mean_square if self._mean_square is not None else 
+        self._initialize_moments(grads_and_vars))
+    moment = (self._moment if self._moment is not None else
+        self._initialize_moments(grads_and_vars))
 
     for grad, var in grads_and_vars:
-      ms[var.name] = epsilon * ms[var.name] + (1 - epsilon) * grad * grad
-      var.set_val(var.val - alpha * grad / (np.sqrt(ms[var.name]) + epsilon))
+      mean_square[var.name] = (rho * mean_square[var.name] + 
+          (1 - rho) * grad * grad)
+      moment[var.name] = momentum * moment[var.name] + alpha * grad / (np.sqrt(
+          mean_square[var.name]) + epsilon)
+      var.set_val(var.val - moment[var.name])
 
-    self._ms = ms
+    self._mean_square = mean_square
+    self._moment = moment
