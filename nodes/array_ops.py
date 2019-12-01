@@ -471,7 +471,7 @@ class Slice(base_node.Node):
     begin_val = self._arguments['begin'].forward(feed_dict)
     sizes_val = self._arguments['sizes'].forward(feed_dict)
     slices = self._get_slices(begin_val, sizes_val, x_val)
-    slice_val = x_val[slices]
+    slice_val = x_val[tuple(slices)]
     return slice_val
 
   def _backward(self, feed_dict):
@@ -492,7 +492,7 @@ class Slice(base_node.Node):
 
     dx_val = np.zeros_like(x_val, dtype='float32')
     slices = self._get_slices(begin_val, sizes_val, x_val)  
-    dx_val[slices] = grad_val
+    dx_val[tuple(slices)] = grad_val
     grad_dict = {self._arguments['x']: dx_val}
     return grad_dict
 
