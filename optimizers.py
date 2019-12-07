@@ -64,6 +64,8 @@ class Optimizer(object):
     graph = objective._graph
     if var_list is None:
       var_list = graph.get_variables(only_trainable=True)
+    var_list = [v for v in var_list if v.trainable]
+
 
     objective.backward(feed_dict=feed_dict)
     grads_and_vars = [(graph.get_runtime()._bwval[v.name], v) 
@@ -118,19 +120,8 @@ class AdamOptimizer(Optimizer):
         if k in ('alpha', 'beta1', 'beta2', 'epsilon')])
 
     self._t = 0
-    self._m = None
-    self._v = None
-
-  def _initialize_moments(self, grads_and_vars):
-    """Initializer the moments of variables as zero-valued tensors.
-
-    Args:
-      grads_and_vars: a list of (gradient, variable) pairs, where gradient is
-        numpy array, and variable is a Node instance.
-    """
-    moments = dict([(var.name, np.zeros(var.shape._raw_shape)) 
-        for _, var in grads_and_vars])
-    return moments
+    self._m = dict() 
+    self._v = dict()
 
   def apply_gradients(self, grads_and_vars):
     """Apply the computed gradient w.r.t. trainable variables.
@@ -144,16 +135,16 @@ class AdamOptimizer(Optimizer):
                                     self._params['beta2'], 
                                     self._params['epsilon'])
     t = self._t + 1
-    m = self._m if self._m is not None else self._initialize_moments(
-        grads_and_vars) 
-    v = self._v if self._v is not None else self._initialize_moments(
-        grads_and_vars)
+    m = self._m
+    v = self._v
 
     alpha_t = alpha * np.sqrt(1 - np.power(beta2, t)) / (1 - np.power(beta1, t))
 
     for grad, var in grads_and_vars:
-      m[var.name] = beta1 * m[var.name] + (1 - beta1) * grad
-      v[var.name] = beta2 * v[var.name] + (1 - beta2) * grad * grad
+      m[var.name] = beta1 * m.get(var.name, np.zeros(var.shape._raw_shape)
+          ) + (1 - beta1) * grad
+      v[var.name] = beta2 * v.get(var.name, np.zeros(var.shape._raw_shape)
+          ) + (1 - beta2) * grad * grad
       var.set_val(var.val - 
           alpha_t * m[var.name] / (np.sqrt(v[var.name]) + epsilon))
 
@@ -163,34 +154,40 @@ class AdamOptimizer(Optimizer):
 
 
 class RMSPropOptimizer(Optimizer):
+  """RMSProp Optimizer"""
   def __init__(self, **params):
+    """Constructor.
+
+    Args:
+      params: a dict mapping from parameter names to parameters.
+    """
     self._params = params
     self._params_str = ', '.join(['%s=%s' % (k, v) for k, v in params.items()
         if k in ('alpha', 'rho', 'momentum', 'epsilon')])
 
-    self._mean_square = None
-    self._moment = None 
-
-  def _initialize_moments(self, grads_and_vars):
-    moments = dict([(var.name, np.zeros(var.shape._raw_shape)) 
-        for _, var in grads_and_vars])
-    return moments
+    self._mean_square = dict()
+    self._moment = dict()
 
   def apply_gradients(self, grads_and_vars):
+    """Apply the computed gradient w.r.t. trainable variables.
+
+    Args:
+      grads_and_vars: a list of (gradient, variable) pairs, where gradient is
+        numpy array, and variable is a Node instance.
+    """
     alpha, rho, momentum, epsilon = (self._params['alpha'], 
                                      self._params['rho'],
                                      self._params['momentum'], 
                                      self._params['epsilon'])
 
-    mean_square = (self._mean_square if self._mean_square is not None else 
-        self._initialize_moments(grads_and_vars))
-    moment = (self._moment if self._moment is not None else
-        self._initialize_moments(grads_and_vars))
+    mean_square = self._mean_square
+    moment = self._moment
 
     for grad, var in grads_and_vars:
-      mean_square[var.name] = (rho * mean_square[var.name] + 
-          (1 - rho) * grad * grad)
-      moment[var.name] = momentum * moment[var.name] + alpha * grad / (np.sqrt(
+      mean_square[var.name] = (rho * mean_square.get(var.name, 
+          np.zeros(var.shape._raw_shape)) + (1 - rho) * grad * grad)
+      moment[var.name] = momentum * moment.get(var.name, 
+          np.zeros(var.shape._raw_shape)) + alpha * grad / (np.sqrt(
           mean_square[var.name]) + epsilon)
       var.set_val(var.val - moment[var.name])
 
