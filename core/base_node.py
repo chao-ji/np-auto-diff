@@ -227,6 +227,9 @@ class Node(object):
         backpropped from one of its consumer node. If None, defaults to an
         all-one array with shape `self._shape`.
     """
+    # If `self` was added to `grad_stopped_nodes` in the 
+    # `forward_backward_cycle` context, we terminate the backpropogation 
+    # immediately.
     if self._graph.get_runtime().grad_stopped(self):
       return 
 
@@ -247,6 +250,10 @@ class Node(object):
 
       grad_dict = node._backward(feed_dict)
       for child, grad_val in grad_dict.items():
+        # If `child` was added to `grad_stopped_nodes` in the 
+        # `forward_backward_cycle` context, it won't be added
+        # to the `queue`, so gradient would not pass through
+        # `child`.
         if self._graph.get_runtime().grad_stopped(child):
           continue
 
