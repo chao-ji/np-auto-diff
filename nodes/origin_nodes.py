@@ -102,6 +102,10 @@ class Variable(Placeholder):
   def val(self):
     return self._forward()
 
+  @property
+  def trainable(self):
+    return self._trainable
+
   def _forward(self, _not_used=None):
     """Compute the value of the variable.
     """
