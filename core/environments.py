@@ -240,12 +240,11 @@ class RunTime(object):
     Args:
       grad_stopped_nodes: a list of Node instances. 
     """
-    if grad_stopped_nodes is not None:
-      for node in grad_stopped_nodes:
-        self.stop_grad(node)
-
     try:
       self.reset()
+      if grad_stopped_nodes is not None:
+        for node in grad_stopped_nodes:
+          self.stop_grad(node)
       yield self
     finally:
       self.reset()
