@@ -46,7 +46,7 @@ This is a NumPy based framework that provides Python program interfaces for defi
 |`variable`|A tensor whose value persists across different forward/backward cycles|
 |`constant`|A tensor with constant value| 
 
-One can build a wide range of neural network architectures, from [logistic regression](demos/logistic_regression.ipynb), to [MNIST handwritten digits classification](demos/conv_net.ipynb), and [handwritten digits generation using GAN](demos/dcgan.ipynb).
+One can create applications using differnet neural network architectures, from [logistic regression](demos/logistic_regression.ipynb)(NN w/o hidden layers), to [MNIST handwritten digits classification](demos/conv_net.ipynb)(ConvNet), and [handwritten digits generation](demos/wgan.ipynb)(GAN).
 
 ## Design ideas  
 * Represent neural network architecture as a DAG, where each node corresponds to an operation (e.g. Conv2D, arithmetic op, reshape, etc.)
@@ -208,13 +208,12 @@ The above code snippets only cover the essential mechanics to create and execute
 * [Logistic Regression](demos/logistic_regression.ipynb)
 * [Batch Normalization](demos/batch_norm.ipynb)
 * [Conv Net for classifying images](demos/conv_net.ipynb)
-* [GAN for generating images](demos/dcgan.ipynb)
+* [GAN for generating images](demos/wgan.ipynb)
 
 ## Extension
 
 Currently only a minimal set of `Node` classes have been implemented (e.g. `Add`, `Multiply`, `Reshape`, `Conv2D`, `FusedBatchNorm`), and additional `Node` types will be added later. To add new `Node` types, you need to subclass from the `Node` class in this file [base_node.py](core/base_node.py), and override the abstract methods `_forward()` and `_backward()`. Check [this guide](g3doc/forward_backward.md) for more details. 
 
-## Remarks
-
-I started out this work when I was trying to figure out exactly how gradients are computed when training deep neural networks in TensorFlow, and see if I can replicate the behavior of TF using Numpy. Because the motivation was purely experimentation, I thought numpy would be good enough, and had no plan to add GPU support (e.g. using CUDA). It will be way too slow if you were to train a real, production-level neural network.
+## Note 
+This is an experimental type of work, which provides only a minimum set of core functionalities needed to build the neural network graph, compute the gradients, and update the network weights. That being said, I hope it can be useful for those interested in understanding the underlying computations involved in neural network training and inference at a deeper level.
 
