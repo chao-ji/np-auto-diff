@@ -56,7 +56,7 @@ One can create applications using differnet neural network architectures, from [
 * In the backward pass, the nodes in the DAG are traversed in the order of breadth-first-search.
 
 ## Updates
-* **07/30/2019**, the order of nodes traversal in the backward pass was changed from depth-first-search to breadth-first-search. This eliminates the need to keep track of the number of downstream nodes that have backpropped their gradients when computing the backward pass.
+* **July 2019**, the order of nodes traversal in the backward pass was changed from depth-first-search to breadth-first-search. This eliminates the need to keep track of the number of downstream nodes that have backpropped their gradients when computing the backward pass.
 
 
 
@@ -69,7 +69,8 @@ One can create applications using differnet neural network architectures, from [
 
 
 ## Installation
-Note that installation is extremely simple, because it requires no third party libraries but NumPy. And this framework is tested in Python3 (some Python2 syntaxes are not compatible).
+
+Make sure you have a recent version of NumPy (>=1.10) and Python (>=3.7).
 
 After cloning the repository,
 
