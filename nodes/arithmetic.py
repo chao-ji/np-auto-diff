@@ -67,7 +67,7 @@ class _BinaryOp(base_node.Node):
         elif dy == 1:
           shape.append(dx)
         else:
-          raise ValueError('operands x and y have incompatible shapes for '
+          raise ValueError('operands x(%s) and y(%s) have incompatible shapes for '
               'broadcasting.' % (x_shape, y_shape))
       elif dx is not None:
         shape.append(None if dx == 1 else dx) 
@@ -154,8 +154,13 @@ class Add(_BinaryOp):
 
     dx_val = grad_val.sum(axis=reduce_dims_x).reshape(dynamic_x_shape)
     dy_val = grad_val.sum(axis=reduce_dims_y).reshape(dynamic_y_shape)
-    grad_dict = { self._arguments['x']: dx_val,
-                  self._arguments['y']: dy_val}
+
+    if self._arguments['x'] is self._arguments['y']:
+      grad_dict = {self._arguments['x']: np.ones(dynamic_x_shape, 
+          dtype='float32') * 2}
+    else:
+      grad_dict = {self._arguments['x']: dx_val,
+                   self._arguments['y']: dy_val}
     return grad_dict
 
 
@@ -207,8 +212,13 @@ class Multiply(_BinaryOp):
     
     dx_val = (grad_val * y_val).sum(axis=reduce_dims_x).reshape(dynamic_x_shape)
     dy_val = (grad_val * x_val).sum(axis=reduce_dims_y).reshape(dynamic_y_shape)
-    grad_dict = { self._arguments['x']: dx_val,
-                  self._arguments['y']: dy_val}
+
+    if self._arguments['x'] is self._arguments['y']:
+      grad_dict = {self._arguments['x']: dx_val + dy_val}
+    else:
+      grad_dict = {self._arguments['x']: dx_val,
+                   self._arguments['y']: dy_val}
+
     return grad_dict
 
 
@@ -258,6 +268,53 @@ class Subtract(_BinaryOp):
 
     dx_val = grad_val.sum(axis=reduce_dims_x).reshape(dynamic_x_shape)
     dy_val = grad_val.sum(axis=reduce_dims_y).reshape(dynamic_y_shape)
-    grad_dict = { self._arguments['x']: dx_val,
-                  self._arguments['y']: -dy_val}
+
+    if self._arguments['x'] is self._arguments['y']:
+      grad_dict = {self._arguments['x']: np.zeros(dynamic_x_shape, 
+          dtype='float32')}
+    else:
+      grad_dict = {self._arguments['x']: dx_val,
+                   self._arguments['y']: -dy_val}
+    return grad_dict
+
+
+class Exp(base_node.Node):
+  """Computes the elementwise Exp(x) function."""
+  def __init__(self, x, graph=None):
+    """Constructor.
+
+    Args:
+      x: a Node instance, the input tensor.
+      graph: a RunTime instance.
+    """
+    super(Exp, self).__init__(x._shape, graph)
+    self._arguments['x'] = x
+
+  def _forward(self, feed_dict):
+    """Compute the forward pass value of the node.
+
+    Args: 
+      feed_dict: a dict mapping from a `Node` instance to a numpy array.
+
+    Returns:
+      the forward pass value of the node.
+    """
+    x_val = self._arguments['x'].forward(feed_dict)
+    return np.exp(x_val)
+
+  def _backward(self, feed_dict):
+    """Retrieve the gradient value of the current node. Then compute and 
+    backprop the gradient w.r.t. the argument nodes of the current node.
+
+    Args: 
+      feed_dict: a dict mapping from a `Node` instance to a numpy array.
+
+    Returns:
+      grad_dict: a dict mapping from a `Node` instance to a numpy array, holding
+        the gradient w.r.t. `self`'s arguments that pass through `self`.
+    """
+    val = self.forward(feed_dict)
+    grad_val = self._graph.get_runtime()._bwval[self.name]
+    grad_val = grad_val * val
+    grad_dict = {self._arguments['x']: grad_val}
     return grad_dict

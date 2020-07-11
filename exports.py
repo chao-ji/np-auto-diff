@@ -74,7 +74,7 @@ def constant(val):
 
 
 def add(x, y):
-  """Performs addition operation.
+  """Performs elementwise addition operation.
 
   Args:
     x: a Node instance, the first operand.
@@ -86,9 +86,33 @@ def add(x, y):
   graph = get_default_graph()
   return arithmetic.Add(x=x, y=y, graph=graph)
 
+
 def subtract(x, y):
+  """Performs elementwise subtraction operation.
+
+  Args:
+    x: a Node instance, the first operand.
+    y: a Node instance, the second operand.
+
+  Returns:
+    an Add node of shape (x - y).shape, holding the result of subtraction.
+  """
   graph = get_default_graph()
   return arithmetic.Subtract(x=x, y=y, graph=graph)
+
+
+def exp(x):
+  """Computes elementwise exp(x) functions.
+
+  Args:
+    x: a Node instance, the input tensor.
+
+  Returns:
+    an Exp node of shape x.shape, holding the result of exp(x).
+  """
+  graph = get_default_graph()
+  return arithmetic.Exp(x=x, graph=graph)
+
 
 def multiply(x, y):
   """Performs multiply operation.

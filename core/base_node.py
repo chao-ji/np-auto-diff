@@ -20,6 +20,7 @@
 # ==============================================================================
 from abc import ABCMeta
 from abc import abstractmethod
+from collections import defaultdict
 
 import numpy as np
 
@@ -227,6 +228,12 @@ class Node(object):
         backpropped from one of its consumer node. If None, defaults to an
         all-one array with shape `self._shape`.
     """
+    parents = self._get_parents()
+
+    # dict mapping string ('name' of child `Node`) to the count of parent 
+    # `Node`'s that have backpropped gradients to the child `Node`
+    count = defaultdict(int) 
+
     # If `self` was added to `grad_stopped_nodes` in the 
     # `forward_backward_cycle` context, we terminate the backpropogation 
     # immediately.
@@ -242,9 +249,11 @@ class Node(object):
 
     self._graph.get_runtime()._bwval[self.name] = bwval
 
+    # LOOP INVARIANT: `queue` always holds the nodes whose gradient have been
+    # fully computed -- all its parent nodes have backpropped their gradients)
     queue = [self]
     while queue:
-      node = queue.pop()
+      node = queue.pop(0)
       if not hasattr(node, '_backward'):
         continue
 
@@ -259,9 +268,12 @@ class Node(object):
 
         if child.name not in self._graph.get_runtime()._bwval:
           self._graph.get_runtime()._bwval[child.name] = grad_val 
-          queue.append(child) 
         else:
           self._graph.get_runtime()._bwval[child.name] += grad_val
+        # increment the count of `child.name` for each backpropped gradient
+        count[child.name] += 1
+        if count[child.name] == len(parents[child.name]):
+          queue.append(child)
 
   def _convert_arithmetic_operand(self, other):
     """Convert arithmetic operand to appropriate type.
@@ -308,3 +320,30 @@ class Node(object):
   def __neg__(self):
     zero = self._convert_arithmetic_operand(0) 
     return exports.subtract(zero, self)
+
+  def _get_parents(self):
+    """Finds the immediate parent node of each node in the backward flowing 
+    graph.
+
+    Example:
+      a = Tensor(shape=[2, 3])
+      b = ad.reduce_mean(a, axis=0)
+      c = ad.reduce_mean(a, axis=1)
+
+      then `parents = {'a': set(Tensor(b), Tensor(c))}`, `b` and `c` are parents
+      of `a` in the backward flowing graph.
+
+    Returns:
+      parents: a dict mapping a string to a set of `Node` instances, where 
+        string is the 'name' of a `Node` instance of 'child', and each element
+        in the set is a 'parent'. 
+    """ 
+    queue = [self]
+    parents = defaultdict(set)
+    while queue:
+      node = queue.pop(0)
+      for child in node._arguments.values():
+        if child.name not in parents:
+          queue.append(child)
+        parents[child.name].add(node)
+    return parents 

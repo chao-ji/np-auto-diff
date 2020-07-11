@@ -28,6 +28,8 @@ from autodiff.exports import variable
 from autodiff.exports import constant 
 from autodiff.exports import add 
 from autodiff.exports import multiply 
+from autodiff.exports import subtract
+from autodiff.exports import exp
 from autodiff.exports import matmul 
 from autodiff.exports import reshape 
 from autodiff.exports import reduce_mean 
