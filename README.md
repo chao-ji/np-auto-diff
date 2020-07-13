@@ -210,7 +210,7 @@ The above code snippets only cover the essential mechanics to create and execute
 * [Batch Normalization](demos/batch_norm.ipynb)
 * [Conv Net for classifying images](demos/conv_net.ipynb)
 * [GAN for generating images](demos/wgan.ipynb)
-
+* [Convolutional VAE for generating images](demos/conv_vae.ipynb)
 ## Extension
 
 Currently only a minimal set of `Node` classes have been implemented (e.g. `Add`, `Multiply`, `Reshape`, `Conv2D`, `FusedBatchNorm`), and additional `Node` types will be added later. To add new `Node` types, you need to subclass from the `Node` class in this file [base_node.py](core/base_node.py), and override the abstract methods `_forward()` and `_backward()`. Check [this guide](g3doc/forward_backward.md) for more details. 
