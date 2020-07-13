@@ -66,7 +66,6 @@ class Optimizer(object):
       var_list = graph.get_variables(only_trainable=True)
     var_list = [v for v in var_list if v.trainable]
 
-
     objective.backward(feed_dict=feed_dict)
     grads_and_vars = [(graph.get_runtime()._bwval[v.name], v) 
         for v in var_list]
@@ -139,12 +138,13 @@ class AdamOptimizer(Optimizer):
     v = self._v
 
     alpha_t = alpha * np.sqrt(1 - np.power(beta2, t)) / (1 - np.power(beta1, t))
+    alpha_t = alpha_t.astype('float32') 
 
     for grad, var in grads_and_vars:
-      m[var.name] = beta1 * m.get(var.name, np.zeros(var.shape._raw_shape)
-          ) + (1 - beta1) * grad
-      v[var.name] = beta2 * v.get(var.name, np.zeros(var.shape._raw_shape)
-          ) + (1 - beta2) * grad * grad
+      m[var.name] = beta1 * m.get(var.name, np.zeros(var.shape._raw_shape, 
+          dtype='float32')) + (1 - beta1) * grad
+      v[var.name] = beta2 * v.get(var.name, np.zeros(var.shape._raw_shape, 
+          dtype='float32')) + (1 - beta2) * grad * grad
       var.set_val(var.val - 
           alpha_t * m[var.name] / (np.sqrt(v[var.name]) + epsilon))
 

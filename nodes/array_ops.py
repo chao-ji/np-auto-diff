@@ -206,7 +206,7 @@ class ReduceMean(_ReductionOp):
     """
     x_val = self._arguments['x'].forward(feed_dict)
     grad_val = self._graph.get_runtime()._bwval[self.name] / np.prod(
-        np.array(x_val.shape)[np.array(self._axis)])
+        np.array(x_val.shape)[np.array(self._axis)]).astype('float32')
 
     isin = np.isin(np.arange(x_val.ndim), self._axis)
     rep = np.where(isin, x_val.shape, 1)

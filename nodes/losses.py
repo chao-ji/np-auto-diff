@@ -143,7 +143,7 @@ class SigmoidCrossEntropyLoss(base_node.Node):
 
     dlogits_val = np.where(logits_val > 0, 1, 0) - labels_val + 1 / (
         self._get_exp_abs(logits_val) + 1) * np.where(logits_val > 0, -1, 1)
-    dlogits_val *= grad_val
+    dlogits_val = dlogits_val.astype('float32') * grad_val
     grad_dict = {self._arguments['logits']: dlogits_val}
     return grad_dict
 
